@@ -35,9 +35,15 @@ class RegionFile(object):
     def getAdaptersForHole(self, holeNumber):
         return self.rgnDta[self.rgnDta[:,self.HoleNumber] == holeNumber,:]
     
-    def adapters(self):
-        for z in np.unique(self.rgnDta[:,self.HoleNumber]):
-            yield self.getAdaptersForHole(z)
+    def adapters(self, n = None):
+        if (not n):
+            for z in np.unique(self.rgnDta[:,self.HoleNumber]):
+                yield self.getAdaptersForHole(z)
+        else:
+            v = np.unique(self.rgnDta[:,self.HoleNumber])
+            for z in v[1:n]:
+                yield self.getAdaptersForHole(z)
+
             
 class BasH5(object):
     ## XXX: this has to be built on basH5 class and work with both CCS and raw reads.
@@ -91,7 +97,6 @@ class BarcodeAligner(object):
     def getAlignmentScore(self, barcode, sequence):
         ## XXX: this bit will have to be fast. Options include having pre-allocated matrices for each barcode.
         return max(align(barcode, sequence), align(rc(barcode), sequence))
-
         
     def scoreBarcodes(self, sequence):
         return [(name,self.getAlignmentScore(bcode, sequence)) for (name, bcode) in self.barcodes.items()]
@@ -133,16 +138,25 @@ class BarcodeLabeler(PBToolRunner):
             
             ## score the lh bc.
             rstart = start - self.expand if start > self.expand else 0
-            bc1 = self.barcodes.scoreBarcodes(self.basFile.getSequenceAsString(zmw,rstart,start))
+            if (start > 0):
+                rhbc = self.basFile.getSequenceAsString(zmw,rstart,start)
+                bc1 = self.barcodes.scoreBarcodes(rhbc)
+            else:
+                bc1 = self.barcodes.scoreBarcodes("")
+                
+            ## score the rh bc - I'm not taking the last one.
+            if (j == npBlock.shape[0] - 1):
+                bc2 = self.barcodes.scoreBarcodes("")
+            else:
+                rend = end + self.expand
+                lhbc = self.basFile.getSequenceAsString(zmw,end,rend)
+                bc2 = self.barcodes.scoreBarcodes(lhbc)
 
-            ## score the rh bc.
-            rend = end + self.expand ## XXX: the bound on this is not obvious.
-            bc2 = self.barcodes.scoreBarcodes(self.basFile.getSequenceAsString(zmw,end,rend))
-        
             ## sum the two scores.
             bcscores = [(y[0][0], y[0][1] + y[1][1]) for y in zip(bc1,bc2)]
             labels[j],scores[j] = bcscores[np.argmax([x[1] for x in bcscores])]
             ZMWs[j] = zmw
+        
         return (scores, labels, ZMWs)
 
     ##
@@ -165,19 +179,17 @@ class BarcodeLabeler(PBToolRunner):
         self.basFile = BasH5(bas)
         self.barcodes = BarcodeAligner(self.args.barcodeFile)
 
+        res = [self.processZMW(x) for x in self.rgnFile.adapters(n = 10)]
+
         from IPython.Shell import IPShellEmbed; IPShellEmbed(argv=[])()
-        print "Done!"
-
-        for x in self.rgnFile.adapters():
-            print self.processZMW(x)
-
-            # res = [self.processZMW(x) for x in self.rgnFile.adapters()]
         
         ## A semi-complete data structure. The maximum scoring barcode
         ## for each adapter find.
         scores = np.hstack([r[0] for r in res])
         labels = np.hstack([r[1] for r in res])
         zmws   = np.hstack([r[2] for r in res])
+
+        [ ] 
                 
 
 if __name__=="__main__":    
