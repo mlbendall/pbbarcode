@@ -11,6 +11,7 @@ import numpy as np
 
 from pbcore.util.ToolRunner import PBToolRunner
 from pbcore.io import FastaIO
+from pbtools.pbbarcode import SWaligner
 
 __p4revision__ = "$Revision: #1 $"
 __p4change__   = "$Change: 97803 $"
@@ -72,17 +73,20 @@ class BasH5(object):
     def getSequenceAsString(self, hole, start, end):
         return ''.join([chr(c) for c in self.getSequence(hole, start, end)])
 
-   
+  
 class BarcodeAligner(object):
     def __init__(self, barcodeFile, maxSequenceLength = 64):
         self.barcodes = dict([(x.getTag(), (x.sequence).upper()) for x in FastaIO.SimpleFastaReader(barcodeFile)])
-        self.cMap = dict(zip('ACGTacgt-N','TGCAtgca-N'))
-        self.smat = np.zeros((30, 30))
+        self.cMap     = dict(zip('ACGTacgt-N','TGCAtgca-N'))
+        self.aligner  = SWaligner.SWaligner()
         
     def rc(self, s):
         return "".join([self.cMap[c] for c in s[::-1]])
+
+    def align(self, seq1, seq2):
+        return self.aligner.score(seq1,seq2)
     
-    def align(self, seq1, seq2, penalty = -1, match = 2):
+    def _align(self, seq1, seq2, penalty = -1, match = 2):
         self.smat[:] = 0
         bestScore = 0
    

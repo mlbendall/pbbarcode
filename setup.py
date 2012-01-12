@@ -1,17 +1,19 @@
 from setuptools import setup, Extension, find_packages
 import os
+import sys
 
-os.system("make -C src/C all")
-
+if os.system("make -C src/C all"):
+    sys.exit(1)
+    
 setup(
     name = 'pbtools.barcode',
     version='0.1.0',
     author='pbiDevNet',
     author_email='pbiDevNet@pacificbiosciences.com',
     license='LICENSE.txt',
-    scripts = ['src/barcodeLabeler.py'],
-    packages = find_packages('src'),  
-    package_dir = {'':'src'},
+    scripts = ['src/python/barcodeLabeler.py'],
+    packages = find_packages('src/python'),  
+    package_dir = {'':'src/python'},
     namespace_packages = ['pbtools'],
     data_files = [('pbtools/pbbarcode/',['src/C/build/sw.so'])],
     zip_safe = False,
