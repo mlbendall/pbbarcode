@@ -21,7 +21,7 @@ int compute_align_score(int* dp_mat, char* tSeq, char* qSeq) {
     int mscore     = 0;
     int i,j;
 
-    memset(dp_mat, 0, M*N);
+    memset(dp_mat, 0, M*N*sizeof(int));
 
     for (i = 1; i < strlen(tSeq) + 1; i++) {
 	for (j = 1; j < strlen(qSeq) + 1; j++) {
