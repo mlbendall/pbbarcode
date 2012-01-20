@@ -170,8 +170,6 @@ class BarcodeLabeler(PBToolRunner):
             bcscores = [(y[0][0], y[0][1] + y[1][1]) for y in zip(bc1,bc2)]
             labels[j],scores[j] = bcscores[np.argmax([x[1] for x in bcscores])]
             ZMWs[j] = zmw
-
-        print "ZMW: %d : %s" % (ZMWs[0], "".join(labels))
         
         return (scores, labels, ZMWs)
 
@@ -219,9 +217,6 @@ class BarcodeLabeler(PBToolRunner):
         bestZmw = [b[0] for b in best]
         bestBcode = [b[1] for b in best]
         
-        for (z,b) in zip(bestZmw, bestBcode):
-            print (z,b)
-
         ## write the best data structure and the semi-complete and be done.
         def create(file, name, data, dtype):
             if name in file:
