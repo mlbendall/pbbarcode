@@ -11,7 +11,7 @@ setup(
     author='pbiDevNet',
     author_email='pbiDevNet@pacificbiosciences.com',
     license='LICENSE.txt',
-    scripts = ['src/python/barcodeLabeler.py'],
+    scripts = ['src/python/barcodeLabeler.py', 'src/python/copyBarcodeCallsToCmpH5.py'],
     packages = find_packages('src/python'),  
     package_dir = {'':'src/python'},
     namespace_packages = ['pbtools'],

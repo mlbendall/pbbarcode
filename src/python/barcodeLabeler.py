@@ -202,20 +202,20 @@ class BarcodeLabeler(PBToolRunner):
         scores = np.hstack([r[0] for r in res])
         labels = np.hstack([r[1] for r in res])
         zmws   = np.hstack([r[2] for r in res])
-
-        uZMWs     = np.sort(np.unique(zmws))
-        bestCalls = [""]*len(uZMWs)
-
-        def maxElt(v):
-            u = np.unique(v)
+        uZMWs  = np.sort(np.unique(zmws))
+        
+        def maxElt(calls, scores):
+            u = np.unique(calls)
             c = [0]*len(u)
             for i in xrange(0, len(u)):
-                c[i] = sum(u[i] == v)
-            return u[np.argmax(c)]
-
-        best = [(int(z), maxElt(labels[zmws == z])) for z in uZMWs] 
+                c[i] = sum(scores[u[i] == calls])
+            return (u[np.argmax(c)], max(c))
+        
+        ## A reduced representation.
+        best = [(int(z), maxElt(labels[zmws == z], scores[zmws == z])) for z in uZMWs]
         bestZmw = [b[0] for b in best]
-        bestBcode = [b[1] for b in best]
+        bestBcode = [b[1][0] for b in best]
+        bestScore = [b[1][1] for b in best]
         
         ## write the best data structure and the semi-complete and be done.
         def create(file, name, data, dtype):
@@ -230,6 +230,8 @@ class BarcodeLabeler(PBToolRunner):
 
         create(ofile, "BarcodeData/Best/ZMW", data = bestZmw, dtype = "int32")
         create(ofile, "BarcodeData/Best/Barcode", data = bestBcode, dtype = h5.new_vlen(str))
+        create(ofile, "BarcodeData/Best/Score", data = bestScore, dtype = "int32")
+        
         create(ofile, "BarcodeData/All/ZMW", data = zmws, dtype = "int32")
         create(ofile, "BarcodeData/All/Score", data = scores, dtype = "int32")
         create(ofile, "BarcodeData/All/Barcode", data = labels, dtype = h5.new_vlen(str))
