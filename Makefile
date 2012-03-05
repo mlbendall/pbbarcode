@@ -3,6 +3,9 @@ all: build install
 build:
 	python setup.py build
 
+bdist:
+	python setup.py bdist
+
 install:
 	python setup.py install
 
