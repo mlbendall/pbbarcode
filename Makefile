@@ -4,7 +4,7 @@ build:
 	python setup.py build
 
 bdist:
-	python setup.py bdist
+	python setup.py bdist --formats=egg
 
 install:
 	python setup.py install
