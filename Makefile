@@ -4,6 +4,7 @@ build:
 	python setup.py build
 
 bdist:
+	python setup.py build --executable="/usr/bin/env python"
 	python setup.py bdist --formats=egg
 
 install:
