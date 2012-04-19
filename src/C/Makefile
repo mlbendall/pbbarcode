@@ -1,4 +1,5 @@
 .PHONY: clean all
+SHELL = /bin/bash -e
 
 all: build/sw.so
 

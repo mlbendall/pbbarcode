@@ -1,3 +1,5 @@
+SHELL = /bin/bash -e
+
 all: build install
 
 build:
