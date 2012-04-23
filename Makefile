@@ -20,6 +20,7 @@ clean:
 	find . -name "*.egg-info" | xargs rm -rf;\
 	find . -name "*.pyc" | xargs rm -rf;\
 	rm -rf dist/
+	make -C src/C clean
 
 test:
 	nosetests -v tests/* 
