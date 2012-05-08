@@ -1,3 +1,5 @@
+.PHONY: doc doc-clean
+
 SHELL = /bin/bash -e
 
 all: build install
@@ -21,6 +23,10 @@ clean:
 	find . -name "*.pyc" | xargs rm -rf;\
 	rm -rf dist/
 	make -C src/C clean
+doc-clean:
+	make -C doc clean
+doc:
+	make -C doc html
 
 test:
 	nosetests -v tests/* 
