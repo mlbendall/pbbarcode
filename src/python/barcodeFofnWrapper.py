@@ -10,7 +10,6 @@ import h5py as h5
 import numpy as np
 
 from pbcore.util.ToolRunner import PBToolRunner
-from pbcore.io import FastaIO
 from pbtools.pbbarcode import SWaligner
 
 class BarcodeFofnWrapper(PBToolRunner):

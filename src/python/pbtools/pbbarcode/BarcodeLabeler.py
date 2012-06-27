@@ -9,7 +9,7 @@ import pkg_resources
 import h5py as h5
 import numpy as np
 
-from pbcore.io import FastaIO
+from pbcore.io import FastaReader
 from pbtools.pbbarcode import SWaligner
 
 class RegionFile(object):
@@ -71,7 +71,7 @@ class BasH5(object):
   
 class BarcodeAligner(object):
     def __init__(self, barcodeFile, maxSequenceLength = 64):
-        self.barcodes = dict([(x.getTag(), (x.sequence).upper()) for x in FastaIO.SimpleFastaReader(barcodeFile)])
+        self.barcodes = dict([(x.getTag(), (x.sequence).upper()) for x in FastaReader(barcodeFile)])
         self.cMap     = dict(zip('ACGTacgt-N','TGCAtgca-N'))
         self.aligner  = SWaligner.SWaligner()
         
