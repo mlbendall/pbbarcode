@@ -2,8 +2,8 @@ from setuptools import setup, Extension, find_packages
 import os
 import sys
 
-if os.system("make -C src/C all"):
-    sys.exit(1)
+#if os.system("make -C src/C all"):
+#    sys.exit(1)
     
 setup(
     name = 'pbtools.barcode',
@@ -15,7 +15,8 @@ setup(
     packages = find_packages('src/python'),  
     package_dir = {'':'src/python'},
     namespace_packages = ['pbtools'],
-    data_files = [('pbtools/pbbarcode/',['src/C/build/sw.so'])],
+    #data_files = [('pbtools/pbbarcode/',['src/C/build/sw.so'])],
+    ext_modules=[Extension('pbtools/pbbarcode/sw', ['src/C/sw.c'], extra_compile_args=["-O4","-DGETPROB","-shared"])], 
     zip_safe = False,
     install_requires=[
         'pbcore >= 0.1',
