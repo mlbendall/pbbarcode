@@ -38,7 +38,7 @@ import pkg_resources
 
 from pbcore.util.ToolRunner import PBMultiToolRunner
 
-__version__ = ".01"
+__version__ = ".02"
 
 class Pbbarcode(PBMultiToolRunner):
     def __init__(self):
@@ -46,10 +46,10 @@ class Pbbarcode(PBMultiToolRunner):
         super(Pbbarcode, self).__init__('\n'.join(desc))
 
         subparsers = self.getSubParsers()
-
-        desc = ['label-regions adds annotation to a region h5 file.']
-        parser_m = subparsers.add_parser('label-regions', help = "Label regions from a region h5 file",
-                                         description = "\n".join(desc), parents = [self.parser])
+        
+        desc = ['Creates a barcode.h5 file from region hdf5 and base hdf5 files.']
+        parser_m = subparsers.add_parser('labelZMWs', description = "\n".join(desc), parents = [self.parser])
+        
         parser_m.add_argument('barcodeFile', metavar = 'barcode.fasta',
                               help = 'Input barcode fasta file')
         parser_m.add_argument('inputFile', metavar = 'input.h5',
@@ -61,7 +61,7 @@ class Pbbarcode(PBMultiToolRunner):
         
         desc = ['label-reads adds information about barcode alignments to a cmp.h5 file',
                 'from a previous call to "label-regions".']
-        parser_s = subparsers.add_parser('label-reads', description = "\n".join(desc),
+        parser_s = subparsers.add_parser('labelAlignments', description = "\n".join(desc),
                                          parents = [self.parser], help = "Label reads from a barcode or region h5 file")
         parser_s.add_argument('inputFofn', metavar = 'barcode.fofn',
                               help = 'input barcode or region fofn file')
