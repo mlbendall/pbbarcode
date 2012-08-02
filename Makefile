@@ -5,7 +5,7 @@ SHELL = /bin/bash -e
 all: build install
 
 build:
-	python setup.py build
+	python setup.py build --executable="/usr/bin/env python"
 
 bdist:
 	python setup.py build --executable="/usr/bin/env python"
