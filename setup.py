@@ -11,11 +11,11 @@ setup(
     author='pbiDevNet',
     author_email='pbiDevNet@pacificbiosciences.com',
     license='LICENSE.txt',
-    scripts = ['src/python/barcodeLabeler.py', 'src/python/copyBarcodeCallsToCmpH5.py', 'src/python/barcodeFofnWrapper.py', 'src/python/pbbarcode.py'],
+    scripts = ['src/python/pbbarcode.py'],
     packages = find_packages('src/python'),  
     package_dir = {'':'src/python'},
     namespace_packages = ['pbtools'],
-    ext_modules=[Extension('pbtools/pbbarcode/sw', ['src/C/sw.c'], extra_compile_args=["-O4","-DGETPROB","-shared"])], 
+    ext_modules=[Extension('pbtools/pbbarcode/sw', ['src/C/sw.c'], extra_compile_args=["-O4","-shared"])], 
     zip_safe = False,
     install_requires=[
         'pbcore >= 0.1',
