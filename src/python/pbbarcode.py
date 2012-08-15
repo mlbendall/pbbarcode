@@ -45,7 +45,7 @@ from pbcore.io.CmpH5Reader import *
 from pbtools.pbbarcode.BarcodeLabeler import BarcodeScorer
 from pbcore.io.FastaIO import *
 
-__version__ = ".03"
+__version__ = ".04"
 
 ## Paths to the Barcode Datasets.
 BC_DS_PATH     = "BarcodeCalls/best"
@@ -175,7 +175,8 @@ class Pbbarcode(PBMultiToolRunner):
                     bcDS[i,1] = mp[2]+mp[4] # score
                     bcDS[i,2] = mp[0]       # count
                     if not makeBCLabel(labels[l], labels[h]) == bcLabels[idx]:
-                        raise Exception("not equal: %s to %s" % (makeBCLabel(labels[l], labels[h]), bcLabels[idx]))
+                        raise Exception("Software Error - not equal: %s to %s" % (makeBCLabel(labels[l], labels[h]), 
+                                                                                  bcLabels[idx]))
                 except:
                     bcDS[i,0] = len(bcLabels) - 1 # index of NULL_BARCODE.
                     bcDS[i,1] = 0
@@ -199,6 +200,7 @@ class Pbbarcode(PBMultiToolRunner):
             del H5[BC_ALN_INFO_DS]
         bcDS = H5.create_dataset(BC_ALN_INFO_DS, data = bcDS, dtype = 'int32')
         bcDS.attrs['ColumnNames'] = n.array(['index', 'score', 'count'])
+        bcDS.attrs['BarcodeMode'] = "asymmetric" if self.args.asymmetric else "symmetric"
         H5.close()
 
     def run(self):
