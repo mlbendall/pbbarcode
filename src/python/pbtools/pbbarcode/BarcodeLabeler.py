@@ -26,6 +26,8 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS 
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #################################################################################$$
+import logging
+
 from pbcore.io.BasH5Reader import *
 from pbcore.io.FastaIO import *
 import pbtools.pbbarcode.SWaligner as Aligner
@@ -34,7 +36,8 @@ import numpy as n
 _RC_MAP = dict(zip('ACGTacgt-N','TGCAtgca-N'))
 
 class BarcodeScorer(object):
-    def __init__(self, basH5, barcodeFasta, adapterSidePad = 0, insertSidePad = 4):
+    def __init__(self, basH5, barcodeFasta, adapterSidePad = 0, insertSidePad = 4, 
+                 scoreMode = 'symmetric'):
         self.basH5 = basH5
         self.barcodeFasta = list(barcodeFasta)
         self.aligner = Aligner.SWaligner()
@@ -44,6 +47,10 @@ class BarcodeScorer(object):
         self.barcodeNames = n.array([barcode.name for barcode in self.barcodeFasta])
         self.adapterSidePad = adapterSidePad
         self.insertSidePad = insertSidePad
+        self.scoreMode = scoreMode
+
+        logging.debug("Constructed BarcodeScorer with scoreMode: %s, adapterSidePad: %d, and insertSidePad: %d" %
+                      (scoreMode, adapterSidePad, insertSidePad))
         
         if len(self.barcodeLength) > 1:
             raise Exception("Currently, all barcodes must be the same length.")
@@ -89,13 +96,30 @@ class BarcodeScorer(object):
     def scoreZMWs(self):
         return [self.scoreZMW(zmw) for zmw in self.basH5]
 
-    def chooseBestBarcodes(self, s):
-        def tabulate(o):
-            p = n.argsort(-o[2])
-            return (o[0], o[1], p[0], o[2][p[0]], p[1], o[2][p[1]])
-        # if you have observed >= 1 adapter return something - this
-        # still is lenient.
-        return [tabulate(score) for score in s if score[1]] 
+    ## The expected record that is returned is: 
+    ## 
+    ## (holeNumber, nAdapters, barcodeIdx1, barcodeScore1, barcodeIdx2, barcodeScore2)
+    def chooseBestBarcodes(self, allScores):
+        # remove cases where you obvserve 0 adapters.
+        fScores = filter(lambda x : x[1], allScores)
+
+        if self.scoreMode in ['symmetric', 'asymmetric']:
+            def tabulate(o):
+                p = n.argsort(-o[2])
+                return (o[0], o[1], p[0], o[2][p[0]], p[1], o[2][p[1]])
+        elif self.scoreMode in ['paired']:
+            def tabulate(o):
+                p = n.argsort([-(o[2][i] + o[2][i+1]) for i in xrange(0, len(o[2]) - 1, 2)])
+                return (o[0], o[1], 2*p[0], o[2][2*p[0]], 2*p[0] + 1, o[2][2*p[0] + 1])
+        else:
+            raise Exception("Unsupported scoring mode in BarcodeLabeler.py")
+
+        return [tabulate(score) for score in fScores] 
+            
+            
+
+
+
     
 
     
