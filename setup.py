@@ -15,7 +15,7 @@ setup(
     packages = find_packages('src/python'),  
     package_dir = {'':'src/python'},
     namespace_packages = ['pbtools'],
-    ext_modules=[Extension('pbtools/pbbarcode/sw', ['src/C/sw.c'], extra_compile_args=["-O4","-shared"])], 
+    ext_modules=[Extension('pbtools/pbbarcode/sw', ['src/C/sw.c'], extra_compile_args=["-O3","-shared"])], 
     zip_safe = False,
     install_requires=[
         'pbcore >= 0.1',
