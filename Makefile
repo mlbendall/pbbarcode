@@ -17,7 +17,7 @@ install:
 develop:
 	python setup.py develop
 
-clean:
+clean: doc-clean
 	rm -rf build/;\
 	find . -name "*.egg-info" | xargs rm -rf;\
 	find . -name "*.pyc" | xargs rm -rf;\

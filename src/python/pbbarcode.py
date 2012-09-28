@@ -36,6 +36,8 @@ import tempfile
 import shutil
 import pkg_resources
 
+from multiprocessing import Pool
+
 import h5py as h5
 import numpy as n
 
@@ -43,22 +45,17 @@ from pbcore.util.ToolRunner import PBMultiToolRunner
 from pbcore.io.BasH5Reader import *
 from pbcore.io.CmpH5Reader import *
 from pbtools.pbbarcode.BarcodeLabeler import BarcodeScorer
+from pbtools.pbbarcode.BarcodeH5Reader import BarcodeH5Reader, BC_DS_PATH, BarcodeIdxException
 from pbcore.io.FastaIO import *
 
-__version__ = ".05"
+__version__ = ".06"
 
 ## Paths to the Barcode Datasets.
-BC_DS_PATH     = "BarcodeCalls/best"
 BC_INFO_NAME   = "BarcodeInfo/Name"
 BC_INFO_ID     = "BarcodeInfo/ID"
 BC_ALN_INFO_DS = "AlnInfo/Barcode"
-
-NULL_BARCODE   = "<>"
 SCORE_MODES    = ['symmetric', 'paired', 'asymmetric']
 
-def makeBCLabel(s1, s2):
-    return NULL_BARCODE.join((s1, s2))
-    
 class Pbbarcode(PBMultiToolRunner):
     def __init__(self):
         desc = ['Utilities for labeling and annoting reads with barcode information.']
@@ -66,7 +63,9 @@ class Pbbarcode(PBMultiToolRunner):
         subparsers = self.getSubParsers()
         
         desc = ['Creates a barcode.h5 file from base h5 files.']
-        parser_m = subparsers.add_parser('labelZMWs', description = "\n".join(desc), parents = [self.parser])
+        parser_m = subparsers.add_parser('labelZMWs', description = "\n".join(desc), 
+                                         parents = [self.parser],
+                                         help = 'Label zmws with barcode annotation')
         parser_m.add_argument('--outDir', help = 'Where to write the newly created barcode.h5 files.',
                               default = os.getcwd())
         parser_m.add_argument('--outFofn', help = 'Write to outFofn',
@@ -86,14 +85,27 @@ class Pbbarcode(PBMultiToolRunner):
         desc = ['adds information about barcode alignments to a cmp.h5 file',
                 'from a previous call to "labelZMWs".']
         parser_s = subparsers.add_parser('labelAlignments', description = "\n".join(desc),
-                                         parents = [self.parser], help = "Label reads from a barcode or region h5 file")
-        parser_s.add_argument('--scoreMode', help = 'The mode in which the barcodes should be scored.',
-                              choices = SCORE_MODES, default = 'symmetric', 
-                              type = str)
+                                         parents = [self.parser], 
+                                         help = "Label reads from a barcode or region h5 file")
         parser_s.add_argument('inputFofn', metavar = 'barcode.fofn',
                               help = 'input barcode fofn file')
         parser_s.add_argument('cmpH5', metavar = 'aligned_reads.cmp.h5',
                               help = 'cmp.h5 file to add barcode labels')
+        
+        desc = ['Takes a bas.h5 fofn and a barcode.h5 fofn and produces',
+                'a fastq file for each barcode found.']
+        parser_s = subparsers.add_parser('emitFastqs', description = "\n".join(desc),
+                                         parents = [self.parser],
+                                         help = "Write fastq files")
+        parser_s.add_argument('inputFofn', metavar = 'input.fofn',
+                              help = 'input bas.h5 fofn file')
+        parser_s.add_argument('barcodeFofn', metavar = 'barcode.fofn',
+                              help = 'input barcode.h5 fofn file')
+        parser_s.add_argument('--outDir', metavar = 'output.dir',
+                              help = 'output directory to write fasta files',
+                              default = os.getcwd())
+        parser_s.add_argument('--trim', help = 'trim off barcodes and any excess constant sequence',
+                              default = 20, type = int)
         
     def getVersion(self):
         return __version__
@@ -123,6 +135,7 @@ class Pbbarcode(PBMultiToolRunner):
         bestDS.attrs['columnNames'] = n.array(['holeNumber', 'nAdapters', 'barcodeIdx1', 
                                                'barcodeScore1', 'barcodeIdx2', 'barcodeScore2'], 
                                               dtype = h5.new_vlen(str))
+        bestDS.attrs['scoreMode'] = self.args.scoreMode
         outH5.close()
         return oFile
 
@@ -136,101 +149,84 @@ class Pbbarcode(PBMultiToolRunner):
         oFile.close()
 
     def labelAlignments(self):
+        logging.info("Labeling alignments using: %s" % self.args.inputFofn)
         def movieName(movieFile):
             return os.path.basename(movieFile).replace('.bc.h5', '')
-        
-        def makeMovieMap(movieFile):
-             bcFile = h5.File(movieFile, 'r')
-             calls = bcFile[BC_DS_PATH][:]
-             bcFile.close()
-             return dict(zip(calls[:,0], calls[:,1:calls.shape[1]]))
-            
-        def getBarcodeLabels(movieFile):
-            bcFile = h5.File(movieFile, 'r')
-            labels = bcFile[BC_DS_PATH].attrs['barcodes'][:]
-            bcFile.close()
-            return labels
-            
-        logging.info("Labeling alignments using %s labeling." % self.args.scoreMode)
             
         barcodeFofn = open(self.args.inputFofn).read().splitlines()
-        movieMap = {movieName(movie) : makeMovieMap(movie) for movie in barcodeFofn}
+        movieMap = { movieName(movie) : BarcodeH5Reader(movie) for movie in barcodeFofn }
         cmpH5 = CmpH5Reader(self.args.cmpH5)
-        labels = getBarcodeLabels(barcodeFofn[0])
         bcDS = n.zeros((len(cmpH5), 3), dtype = "int32")
-
-        if self.args.scoreMode == 'symmetric':
-            bcLabels = [ makeBCLabel(a, b) for a,b in zip(labels, labels)]
-            bcLabels.append(NULL_BARCODE)
-            for (i, aln) in enumerate(cmpH5):
-                try:
-                    mp = movieMap[aln.movieInfo.Name][aln.HoleNumber]
-                    bcDS[i,0] = mp[1] # index
-                    bcDS[i,1] = mp[2] # score
-                    bcDS[i,2] = mp[0] # count
-                except:
-                    bcDS[i,0] = len(bcLabels) - 1 # index of NULL_BARCODE. 
-                    bcDS[i,1] = 0
-                    bcDS[i,2] = 0
-        elif self.args.scoreMode == 'asymmetric':
-            bcLabels = [makeBCLabel(labels[i], labels[j]) for i in xrange(0, len(labels)) 
-                        for j in xrange(i+1, len(labels))]
-            bcLabels.append(NULL_BARCODE)
-            for (i, aln) in enumerate(cmpH5):
-                try:
-                    mp = movieMap[aln.movieInfo.Name][aln.HoleNumber]
-                    # this is a little trickier. 
-                    (l, h) = (mp[1], mp[3]) if mp[1] < mp[3] else (mp[3], mp[1])
-                    idx = ((len(labels)-1)*l - l*(l-1)/2) + h-l-1
-                    bcDS[i,0] = idx         # index
-                    bcDS[i,1] = mp[2]+mp[4] # score
-                    bcDS[i,2] = mp[0]       # count
-                    if not makeBCLabel(labels[l], labels[h]) == bcLabels[idx]:
-                        raise Exception("Software Error - not equal: %s to %s" % (makeBCLabel(labels[l], labels[h]), 
-                                                                                  bcLabels[idx]))
-                except:
-                    bcDS[i,0] = len(bcLabels) - 1 # index of NULL_BARCODE.
-                    bcDS[i,1] = 0
-                    bcDS[i,2] = 0
-
-        elif self.args.scoreMode == 'paired':
-            # paired means that barcodes come in twos in the file.
-            bcLabels = [ makeBCLabel(labels[i], labels[i+1]) for i in xrange(0, len(labels) - 1, 2) ]
-            bcLabels.append(NULL_BARCODE)
-            for (i, aln) in enumerate(cmpH5):
-                try:
-                    mp = movieMap[aln.movieInfo.Name][aln.HoleNumber]
-                    bcDS[i,0] = mp[1]/2     # index
-                    bcDS[i,1] = mp[2]+mp[4] # score
-                    bcDS[i,2] = mp[0]       # count
-                except:
-                    bcDS[i,0] = len(bcLabels) - 1 # index of NULL_BARCODE.
-                    bcDS[i,1] = 0
-                    bcDS[i,2] = 0
-        else:
-            raise Exception("Unknown scoring mode: %s in pbbarcode.py." % self.args.scoreMode)
-            
+        
+        for (i, aln) in enumerate(cmpH5):
+            bcFile = movieMap[aln.movieInfo.Name]
+            zmwCall = bcFile.getBarcodeTupleForZMW(aln.HoleNumber)
+            bcDS[i,:] = n.array(zmwCall)
+        #
         # Now, we write the datastructures to the file.
+        #
         try:
             ## this is so that we can reopen in 'write' mode.
             cmpH5.__del__()
         except Exception, e:
-            logging.info(e) 
+            logging.info(e)
 
         H5 = h5.File(self.args.cmpH5, 'r+')
         if BC_INFO_ID in H5:
             del H5[BC_INFO_ID]
         if BC_INFO_NAME in H5:
             del H5[BC_INFO_NAME]
+     
+        # we use the first one to get the labels, if somehow they
+        # don't have all of the same stuff that will be an issue.
+        bcReader = movieMap[movieMap.keys()[0]]
+        bcLabels = bcReader.bcLabels
         H5.create_dataset(BC_INFO_ID, data = n.array(range(0, len(bcLabels))), dtype = 'int32')
         H5.create_dataset(BC_INFO_NAME, data = bcLabels, dtype = h5.new_vlen(str))
-        
         if BC_ALN_INFO_DS in H5:
             del H5[BC_ALN_INFO_DS]
         bcDS = H5.create_dataset(BC_ALN_INFO_DS, data = bcDS, dtype = 'int32')
         bcDS.attrs['ColumnNames'] = n.array(['index', 'score', 'count'])
-        bcDS.attrs['BarcodeMode'] = self.args.scoreMode
+        bcDS.attrs['BarcodeMode'] = bcReader.scoreMode
         H5.close()
+
+    def emitFastqs(self):
+        # step through the bas.h5 and barcode.h5 files and emit 
+        # reads for each of these. 
+        inputFofn = open(self.args.inputFofn).read().splitlines()
+        barcodeFofn = open(self.args.barcodeFofn).read().splitlines()
+        outDir = self.args.outDir
+        outFiles = {} 
+        
+        for basFile, barcodeFile in zip(inputFofn, barcodeFofn):
+            logging.info("Processing: %s %s" % (basFile, barcodeFile))
+            basH5 = CCSBasH5Reader(basFile)
+            bcH5 = BarcodeH5Reader(barcodeFile)
+            
+            for label in bcH5.bcLabels:
+                try:
+                    zmws = bcH5.getZMWsForBarcode(label)
+                    for row in range(0, zmws.shape[0]):
+                        holeNumber = zmws[row,0]
+                        zmwRead = basH5[holeNumber]
+                        if zmwRead:
+                            if not label in outFiles.keys():
+                                outFiles[label] = []
+                            outFiles[label].append(FastqEntry(zmwRead.readName, 
+                                                              zmwRead.basecalls(),
+                                                              zmwRead.QualityValue()))
+                
+                except BarcodeIdxException, e:
+                    continue
+        
+        if not os.path.exists(self.args.outDir):
+            os.makedirs(self.args.outDir)
+        
+        for k in outFiles.keys():
+            ofile = open("%s/%s.fasta" % (self.args.outDir, k), 'w')
+            for e in outFiles[k]:
+                writeFastqEntry(ofile, e.trim(self.args.trim))
+            ofile.close()
 
     def run(self):
         logging.debug("Arguments" + str(self.args))
@@ -238,6 +234,8 @@ class Pbbarcode(PBMultiToolRunner):
             self.makeBarcodeFofnFromBasFofn()
         elif self.args.subName == 'labelAlignments':
             self.labelAlignments()
+        elif self.args.subName == 'emitFastqs':
+            self.emitFastqs()
 
 if __name__ == '__main__':    
     sys.exit(Pbbarcode().start())
