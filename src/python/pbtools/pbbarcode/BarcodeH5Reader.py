@@ -50,14 +50,15 @@ class BarcodeH5Reader(object):
                                       for hn in self.bestDS[:,0]])
 
     def getBarcodeTupleForZMW(self, holeNumber):
-        """Returns a tuple of (barcodeIdx, score, numberOfPasses)"""
+        """Returns a tuple of (barcodeIdx, score, numberOfPasses)
+        where barcodeIdx is an index into bcLabels"""
         try:
             d = self.holeNumberToBC[holeNumber]
             if self.scoreMode == 'symmetric':
                 return (d[1], d[2], d[0])
             elif self.scoreMode == 'asymmetric':
                 (l, h) = (d[1], d[3]) if d[1] < d[3] else (d[3], d[1])
-                idx = ((len(self.bcLabels)-1)*l - l*(l-1)/2) + h-l-1
+                idx = ((len(self.barcodes)-1)*l - l*(l-1)/2) + h-l-1
                 return (idx, d[2]+d[4], d[0])
             elif self.scoreMode == 'paired':
                 return (d[1]/2, d[2] + d[4], d[0])
