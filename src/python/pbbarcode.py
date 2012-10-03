@@ -36,8 +36,6 @@ import tempfile
 import shutil
 import pkg_resources
 
-from multiprocessing import Pool
-
 import h5py as h5
 import numpy as n
 
@@ -106,6 +104,10 @@ class Pbbarcode(PBMultiToolRunner):
                               default = os.getcwd())
         parser_s.add_argument('--trim', help = 'trim off barcodes and any excess constant sequence',
                               default = 20, type = int)
+        parser_s.add_argument('--subreads', help = ('whether to produce fastq files for the subreads;' +
+                                                    'the default is to use the CCS reads.'),
+                              action = "store_true",
+                              default = False)
         
     def getVersion(self):
         return __version__
@@ -200,22 +202,26 @@ class Pbbarcode(PBMultiToolRunner):
         
         for basFile, barcodeFile in zip(inputFofn, barcodeFofn):
             logging.info("Processing: %s %s" % (basFile, barcodeFile))
-            basH5 = CCSBasH5Reader(basFile)
-            bcH5 = BarcodeH5Reader(barcodeFile)
+            basH5 = BasH5Reader(basFile)
+            bcH5  = BarcodeH5Reader(barcodeFile)
             
             for label in bcH5.bcLabels:
                 try:
                     zmws = bcH5.getZMWsForBarcode(label)
                     for row in range(0, zmws.shape[0]):
-                        holeNumber = zmws[row,0]
-                        zmwRead = basH5[holeNumber]
-                        if zmwRead:
-                            if not label in outFiles.keys():
-                                outFiles[label] = []
-                            outFiles[label].append(FastqEntry(zmwRead.readName, 
-                                                              zmwRead.basecalls(),
-                                                              zmwRead.QualityValue()))
-                
+                        zmw = basH5[zmws[row, 0]]
+                        if zmw:
+                            if self.args.subreads:
+                                reads = zmw.subreads()
+                            else:
+                                reads = [zmw.ccsRead()]
+                            if any(reads):
+                                if not label in outFiles.keys():
+                                    outFiles[label] = []
+                                for read in reads:
+                                    outFiles[label].append(FastqEntry(read.readName, 
+                                                                      read.basecalls(),
+                                                                      read.QualityValue()))
                 except BarcodeIdxException, e:
                     continue
         
