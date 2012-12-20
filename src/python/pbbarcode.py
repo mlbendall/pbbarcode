@@ -229,7 +229,7 @@ class Pbbarcode(PBMultiToolRunner):
             os.makedirs(self.args.outDir)
         
         for k in outFiles.keys():
-            ofile = open("%s/%s.fasta" % (self.args.outDir, k), 'w')
+            ofile = open("%s/%s.fastq" % (self.args.outDir, k), 'w')
             for e in outFiles[k]:
                 writeFastqEntry(ofile, e.trim(self.args.trim))
             ofile.close()
