@@ -100,7 +100,7 @@ class Pbbarcode(PBMultiToolRunner):
         parser_s.add_argument('barcodeFofn', metavar = 'barcode.fofn',
                               help = 'input barcode.h5 fofn file')
         parser_s.add_argument('--outDir', metavar = 'output.dir',
-                              help = 'output directory to write fasta files',
+                              help = 'output directory to write fastq files',
                               default = os.getcwd())
         parser_s.add_argument('--trim', help = 'trim off barcodes and any excess constant sequence',
                               default = 20, type = int)
