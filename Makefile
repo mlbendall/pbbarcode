@@ -28,5 +28,3 @@ doc-clean:
 doc:
 	make -C doc html
 
-test:
-	nosetests -v tests/* 
