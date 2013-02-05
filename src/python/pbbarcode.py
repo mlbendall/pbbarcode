@@ -44,7 +44,7 @@ from pbcore.io.BasH5Reader import *
 from pbcore.io.CmpH5Reader import *
 from pbtools.pbbarcode.BarcodeLabeler import BarcodeScorer
 from pbtools.pbbarcode.BarcodeH5Reader import BarcodeH5Reader, BC_DS_PATH, BarcodeIdxException
-from pbcore.io.FastaIO import *
+from pbcore.io import FastaReader, FastqWriter, FastqRecord
 
 __version__ = ".06"
 
@@ -192,6 +192,11 @@ class Pbbarcode(PBMultiToolRunner):
         bcDS.attrs['BarcodeMode'] = bcReader.scoreMode
         H5.close()
 
+    def trimFastqRecord(fastqRecord, trim):
+        return FastqRecord(fastqRecord.name,
+                           fastqRecord.sequence[trim:-trim],
+                           fastqRecord.quality[trim:-trim])
+        
     def emitFastqs(self):
         # step through the bas.h5 and barcode.h5 files and emit 
         # reads for each of these. 
@@ -219,9 +224,9 @@ class Pbbarcode(PBMultiToolRunner):
                                 if not label in outFiles.keys():
                                     outFiles[label] = []
                                 for read in reads:
-                                    outFiles[label].append(FastqEntry(read.readName, 
-                                                                      read.basecalls(),
-                                                                      read.QualityValue()))
+                                    outFiles[label].append(FastqRecord(read.readName, 
+                                                                       read.basecalls(),
+                                                                       read.QualityValue()))
                 except BarcodeIdxException, e:
                     continue
         
@@ -229,9 +234,9 @@ class Pbbarcode(PBMultiToolRunner):
             os.makedirs(self.args.outDir)
         
         for k in outFiles.keys():
-            ofile = open("%s/%s.fastq" % (self.args.outDir, k), 'w')
+            w = FastqWriter("%s/%s.fastq" % (self.args.outDir, k))
             for e in outFiles[k]:
-                writeFastqEntry(ofile, e.trim(self.args.trim))
+                w.writeRecord(trimFastqRecord(e, self.args.trim))
             ofile.close()
 
     def run(self):
