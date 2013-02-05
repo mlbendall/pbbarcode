@@ -191,11 +191,6 @@ class Pbbarcode(PBMultiToolRunner):
         bcDS.attrs['ColumnNames'] = n.array(['index', 'score', 'count'])
         bcDS.attrs['BarcodeMode'] = bcReader.scoreMode
         H5.close()
-
-    def trimFastqRecord(fastqRecord, trim):
-        return FastqRecord(fastqRecord.name,
-                           fastqRecord.sequence[trim:-trim],
-                           fastqRecord.quality[trim:-trim])
         
     def emitFastqs(self):
         # step through the bas.h5 and barcode.h5 files and emit 
@@ -248,6 +243,12 @@ class Pbbarcode(PBMultiToolRunner):
         elif self.args.subName == 'emitFastqs':
             self.emitFastqs()
 
+def trimFastqRecord(fastqRecord, trim):
+    return FastqRecord(fastqRecord.name,
+                       fastqRecord.sequence[trim:-trim],
+                       fastqRecord.quality[trim:-trim])
+
+            
 if __name__ == '__main__':    
     sys.exit(Pbbarcode().start())
     
