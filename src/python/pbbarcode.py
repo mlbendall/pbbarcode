@@ -232,7 +232,7 @@ class Pbbarcode(PBMultiToolRunner):
             w = FastqWriter("%s/%s.fastq" % (self.args.outDir, k))
             for e in outFiles[k]:
                 w.writeRecord(trimFastqRecord(e, self.args.trim))
-            ofile.close()
+            
 
     def run(self):
         logging.debug("Arguments" + str(self.args))
