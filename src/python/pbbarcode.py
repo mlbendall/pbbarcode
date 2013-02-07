@@ -229,9 +229,9 @@ class Pbbarcode(PBMultiToolRunner):
             os.makedirs(self.args.outDir)
         
         for k in outFiles.keys():
-            w = FastqWriter("%s/%s.fastq" % (self.args.outDir, k))
-            for e in outFiles[k]:
-                w.writeRecord(trimFastqRecord(e, self.args.trim))
+            with FastqWriter("%s/%s.fastq" % (self.args.outDir, k)) as w:
+                for e in outFiles[k]:
+                    w.writeRecord(trimFastqRecord(e, self.args.trim))
             
 
     def run(self):
