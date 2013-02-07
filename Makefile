@@ -17,6 +17,10 @@ install:
 develop:
 	python setup.py develop
 
+test:
+	find tests -name "*.py" | xargs nosetests
+	find tests/cram -name "*.t" | xargs cram --verbose 
+
 clean: doc-clean
 	rm -rf build/;\
 	find . -name "*.egg-info" | xargs rm -rf;\
