@@ -157,31 +157,15 @@ class Pbbarcode(PBMultiToolRunner):
             
         barcodeFofn = open(self.args.inputFofn).read().splitlines()
         movieMap = { movieName(movie) : BarcodeH5Reader(movie) for movie in barcodeFofn }
-        cmpH5 = CmpH5Reader(self.args.cmpH5, 'a')
-        bcDS = n.zeros((len(cmpH5), 3), dtype = "int32")
-        
-        for (i, aln) in enumerate(cmpH5):
-            bcFile = movieMap[aln.movieInfo.Name]
-            zmwCall = bcFile.getBarcodeTupleForZMW(aln.HoleNumber)
-            bcDS[i,:] = n.array(zmwCall)
-        #
-        # Now, we write the datastructures to the file.
-        #
-        # try:
-        #     ## this is so that we can reopen in 'write' mode.
-        #     cmpH5.__del__()
-        # except Exception, e:
-        #     logging.info(e)
 
-        # import gc
-        # gc.collect()
+        with CmpH5Reader(self.args.cmpH5) as cmpH5:
+            bcDS = n.zeros((len(cmpH5), 3), dtype = "int32")
+            for (i, aln) in enumerate(cmpH5):
+                bcFile = movieMap[aln.movieInfo.Name]
+                zmwCall = bcFile.getBarcodeTupleForZMW(aln.HoleNumber)
+                bcDS[i,:] = n.array(zmwCall)
 
-        # logging.debug("Deleted cmp.h5: %s" % self.args.cmpH5)
-        # logging.debug("Path exists: %s" % str(os.path.exists(self.args.cmpH5)))
-        # H5 = h5.File(self.args.cmpH5, 'a')
-
-        H5 = cmpH5.file 
-        
+        H5 = h5.File(self.args.cmpH5, 'r+')
         if BC_INFO_ID in H5:
             del H5[BC_INFO_ID]
         if BC_INFO_NAME in H5:
