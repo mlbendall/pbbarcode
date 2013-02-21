@@ -96,9 +96,11 @@ class BarcodeScorer(object):
     def scoreZMWs(self):
         return [self.scoreZMW(zmw) for zmw in self.basH5]
 
-    ## The expected record that is returned is: 
-    ## 
-    ## (holeNumber, nAdapters, barcodeIdx1, barcodeScore1, barcodeIdx2, barcodeScore2)
+    # The expected record that is returned is: 
+    # 
+    # (holeNumber, nAdapters, barcodeIdx1, barcodeScore1, barcodeIdx2, barcodeScore2)
+    # 
+    # XXX : I'm not using named tuples because of performance, but readability truly suffers. 
     def chooseBestBarcodes(self, allScores):
         # remove cases where you obvserve 0 adapters.
         fScores = filter(lambda x : x[1], allScores)
@@ -109,8 +111,27 @@ class BarcodeScorer(object):
                 return (o[0], o[1], p[0], o[2][p[0]], p[1], o[2][p[1]])
         elif self.scoreMode in ['paired']:
             def tabulate(o):
-                p = n.argsort([-(o[2][i] + o[2][i+1]) for i in xrange(0, len(o[2]) - 1, 2)])
-                return (o[0], o[1], 2*p[0], o[2][2*p[0]], 2*p[0] + 1, o[2][2*p[0] + 1])
+                # bug 22035 - the problem is that I score both F1,R1
+                # on both sides of the molecule. In the case when you
+                # only see one adapter, then you are going to sum both
+                # R1+F1 on the same putative barcode - this might be a
+                # lower score than some alternate F or
+                # R. Realistically, in paired mode you should be
+                # aligning the pairs to the sides of the molecules,
+                # but this is probably a good work around for now.
+                if o[1] == 1:
+                    p = n.argsort(-o[2])[0]
+                    # now p can be either F1 or R1, but below, I need
+                    # it to be F1 so if it is odd, subtract 1. And we
+                    # need to mod it by 2 because our selection below
+                    # will multiply it up.
+                    p = (p if p % 2 == 0 else p - 1)/2
+                else:
+                    p = n.argsort([-(o[2][i] + o[2][i+1]) for i in 
+                                    xrange(0, len(o[2]) - 1, 2)])[0]
+                
+                return (o[0], o[1], 2*p, o[2][2*p], 2*p + 1, o[2][2*p + 1])
+
         else:
             raise Exception("Unsupported scoring mode in BarcodeLabeler.py")
 

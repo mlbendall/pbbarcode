@@ -46,7 +46,7 @@ from pbtools.pbbarcode.BarcodeLabeler import BarcodeScorer
 from pbtools.pbbarcode.BarcodeH5Reader import BarcodeH5Reader, BC_DS_PATH, BarcodeIdxException
 from pbcore.io import FastaReader, FastqWriter, FastqRecord
 
-__version__ = ".06"
+__version__ = ".07"
 
 ## Paths to the Barcode Datasets.
 BC_INFO_NAME   = "BarcodeInfo/Name"
