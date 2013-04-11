@@ -35,6 +35,7 @@ import logging
 import tempfile
 import shutil
 import pkg_resources
+import re
 
 import h5py as h5
 import numpy as n
@@ -113,6 +114,13 @@ class Pbbarcode(PBMultiToolRunner):
         return __version__
 
     def makeBarcodeH5FromBasH5(self, basH5):
+        # write the new file. 
+        # bug 23071
+        # oFile = '/'.join((self.args.outDir, basH5.movieName + '.bc.h5'))
+        oFile = '/'.join((self.args.outDir, re.sub(r'.ba[x|s].h5', '.bc.h5', 
+                                                   os.path.basename(basH5.filename))))
+        logging.info("Writing to: %s" % oFile)
+
         logging.info("Labeling: %s" % basH5.filename)
         labeler = BarcodeScorer(basH5, FastaReader(self.args.barcodeFile),
                                 self.args.adapterSidePad, self.args.insertSidePad,
@@ -123,9 +131,7 @@ class Pbbarcode(PBMultiToolRunner):
         bestScores = labeler.chooseBestBarcodes(allScores)
         logging.debug("Chose best barcodes")
 
-        ## write the new file. 
-        oFile = '/'.join((self.args.outDir, basH5.movieName + '.bc.h5'))
-        logging.info("Preparing to write: %s" % oFile)
+        ## write.
         outH5  = h5.File(oFile, 'a')
         outDta = n.vstack(bestScores)
         if BC_DS_PATH in outH5:
