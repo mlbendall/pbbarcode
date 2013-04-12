@@ -64,11 +64,10 @@ class Pbbarcode(PBMultiToolRunner):
     def __init__(self):
         desc = ['Utilities for labeling and annoting reads with barcode information.']
         super(Pbbarcode, self).__init__('\n'.join(desc))
-        subparsers = self.getSubParsers()
+        subparsers = self.subParsers
         
         desc = ['Creates a barcode.h5 file from base h5 files.']
         parser_m = subparsers.add_parser('labelZMWs', description = "\n".join(desc), 
-                                         parents = [self.parser],
                                          help = 'Label zmws with barcode annotation')
         parser_m.add_argument('--outDir', help = 'Where to write the newly created barcode.h5 files.',
                               default = os.getcwd())
@@ -94,7 +93,6 @@ class Pbbarcode(PBMultiToolRunner):
         desc = ['adds information about barcode alignments to a cmp.h5 file',
                 'from a previous call to "labelZMWs".']
         parser_s = subparsers.add_parser('labelAlignments', description = "\n".join(desc),
-                                         parents = [self.parser], 
                                          help = "Label reads from a barcode or region h5 file")
         parser_s.add_argument('inputFofn', metavar = 'barcode.fofn',
                               help = 'input barcode fofn file')
@@ -104,7 +102,6 @@ class Pbbarcode(PBMultiToolRunner):
         desc = ['Takes a bas.h5 fofn and a barcode.h5 fofn and produces',
                 'a fastq file for each barcode found.']
         parser_s = subparsers.add_parser('emitFastqs', description = "\n".join(desc),
-                                         parents = [self.parser],
                                          help = "Write fastq files")
         parser_s.add_argument('inputFofn', metavar = 'input.fofn',
                               help = 'input bas.h5 fofn file')
@@ -123,7 +120,6 @@ class Pbbarcode(PBMultiToolRunner):
         desc = ['Takes a bas.h5 fofn and a barcode.h5 fofn and produces',
                 'a fasta file for each barcode with a consensus sequence.']
         parser_s = subparsers.add_parser('consensus', description = "\n".join(desc),
-                                         parents = [self.parser],
                                          help = "compute consensus")
         parser_s.add_argument('inputFofn', metavar = 'input.fofn',
                               help = 'input bas.h5 fofn file')
@@ -292,13 +288,13 @@ class Pbbarcode(PBMultiToolRunner):
 
     def run(self):
         logging.debug("Arguments" + str(self.args))
-        if self.args.subName == 'labelZMWs':
+        if self.args.subCommand == 'labelZMWs':
             self.makeBarcodeFofnFromBasFofn()
-        elif self.args.subName == 'labelAlignments':
+        elif self.args.subCommand == 'labelAlignments':
             self.labelAlignments()
-        elif self.args.subName == 'emitFastqs':
+        elif self.args.subCommand == 'emitFastqs':
             self.emitFastqs()
-        elif self.args.subName == 'consensus':
+        elif self.args.subCommand == 'consensus':
             self.consensus()
         else:
             sys.exit(1)
