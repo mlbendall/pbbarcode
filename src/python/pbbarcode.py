@@ -233,11 +233,24 @@ class Pbbarcode(PBMultiToolRunner):
     def getFastqs(self):
         # step through the bas.h5 and barcode.h5 files and emit 
         # reads for each of these. 
-        inputFofn = open(self.args.inputFofn).read().splitlines()
-        barcodeFofn = open(self.args.barcodeFofn).read().splitlines()
+        inputFofn = n.array(open(self.args.inputFofn).read().splitlines())
+        barcodeFofn = n.array(open(self.args.barcodeFofn).read().splitlines())
+
+        def movieNameFromFile(fn): 
+            return re.sub(r'\.bc\.h5|\.bax\.h5|\.bas\.h5', '', os.path.basename(fn))
+
+        # sort them.
+        inputFofn = list(inputFofn[n.array(n.argsort([movieNameFromFile(a) for \
+                                                          a in inputFofn]))])
+        barcodeFofn = list(barcodeFofn[n.array(n.argsort([movieNameFromFile(a) for \
+                                                              a in barcodeFofn]))])
+        
+        if len(inputFofn) != len(barcodeFofn) or \
+                any([ movieNameFromFile(a) != movieNameFromFile(b) \
+                          for a,b in zip(inputFofn, barcodeFofn)]):
+            raise Exception("input.fofn and barcode.fofn do not match.")
 
         outFiles = {} 
-        
         for basFile, barcodeFile in zip(inputFofn, barcodeFofn):
             logging.info("Processing: %s %s" % (basFile, barcodeFile))
             basH5 = BasH5Reader(basFile)
