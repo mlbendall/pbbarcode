@@ -33,11 +33,24 @@ int compute_align_score(int* dp_mat, char* tSeq, char* qSeq) {
 		best_score = dp_mat[i*M + j];
 	}
     }
-    /* for (j = 0; j < strlen(qSeq) + 1; j++) { */
-    /* 	for (i = 0; i < strlen(tSeq) + 1; i++) { */
-    /* 	    printf("%d ", dp_mat[i*M + j]); */
-    /* 	} */
-    /* 	printf("\n"); */
-    /* } */
     return best_score;
+}
+
+void compute_align_scores(int* scores, int n, int* dp_mat, char* tSeq, 
+                          char** qSeqs) {
+    int i = 0;
+    for (i; i < n; i++) {
+        scores[i] = compute_align_score(dp_mat, tSeq, qSeqs[i]);
+    }
+}
+
+
+void print_dp_mat(int* dp_mat, char* tSeq, char* qSeq) {
+    int i,j;
+    for (j = 0; j < strlen(qSeq) + 1; j++) {
+    	for (i = 0; i < strlen(tSeq) + 1; i++) {
+    	    printf("%d ", dp_mat[i*M + j]);
+    	}
+    	printf("\n");
+    }
 }

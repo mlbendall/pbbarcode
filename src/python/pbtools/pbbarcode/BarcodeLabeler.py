@@ -37,7 +37,8 @@ _RC_MAP = dict(zip('ACGTacgt-N','TGCAtgca-N'))
 
 class BarcodeScorer(object):
     def __init__(self, basH5, barcodeFasta, adapterSidePad = 0, insertSidePad = 4, 
-                 scoreMode = 'symmetric'):
+                 scoreMode = 'symmetric', maxHits = 10, scoreFirst = True, 
+                 startTimeCutoff = 5):
         self.basH5 = basH5
         self.barcodeFasta = list(barcodeFasta)
         self.aligner = Aligner.SWaligner()
@@ -48,20 +49,38 @@ class BarcodeScorer(object):
         self.adapterSidePad = adapterSidePad
         self.insertSidePad = insertSidePad
         self.scoreMode = scoreMode
+        self.maxHits = maxHits
+        self.scoreFirst = scoreFirst
+        self.startTimeCutoff = startTimeCutoff
 
-        logging.debug("Constructed BarcodeScorer with scoreMode: %s, adapterSidePad: %d, and insertSidePad: %d" %
-                      (scoreMode, adapterSidePad, insertSidePad))
+        self.forwardScorer = self.aligner.makeScorer([x[0] for x in self.barcodeSeqs])
+        self.reverseScorer = self.aligner.makeScorer([x[1] for x in self.barcodeSeqs])
+
+        logging.debug(("Constructed BarcodeScorer with scoreMode: %s, adapterSidePad: %d" + 
+                       ", and insertSidePad: %d") % (scoreMode, adapterSidePad, insertSidePad))
         
         if len(self.barcodeLength) > 1:
             raise Exception("Currently, all barcodes must be the same length.")
         else:
             self.barcodeLength = int(self.barcodeLength)
 
+    # different path for scoring - slower.
     def score(self, s1, s2):
         if s1 and s2:
             return self.aligner.score(s1, s2)
         else:
             return 0
+    def _scoreZMW_v1(self, zmw):
+        def scoreBarcode(barcode, adapterSeqs):
+            return max(self.score(barcode[0], adapterSeqs[0]) + self.score(barcode[1], adapterSeqs[1]),
+                       self.score(barcode[1], adapterSeqs[0]) + self.score(barcode[0], adapterSeqs[1]))
+    
+        barcodeScores = n.zeros(len(self.barcodeFasta))
+        adapters = self.flankingSeqs(zmw)
+        for adapter in adapters:
+            barcodeScores += [scoreBarcode(barcode, adapter) for barcode in self.barcodeSeqs]
+        
+        return (zmw.holeNumber, len(adapters), barcodeScores)
     
     def rc(self, s):
         return "".join([_RC_MAP[c] for c in s[::-1]])
@@ -78,23 +97,47 @@ class BarcodeScorer(object):
                                      rEnd + self.barcodeLength + self.insertSidePad).basecalls()
             except IndexError:
                 qSeqRight = None
+
             return (qSeqLeft, qSeqRight)
-        return [fromRange(start, end) for (start, end) in zmw.adapterRegions()]
-        
+
+        adapterRegions = zmw.adapterRegions
+        if len(adapterRegions) > self.maxHits:
+            adapterRegions = adapterRegions[0:self.maxHits]
+                
+        seqs = [fromRange(start, end) for (start, end) in adapterRegions]
+
+        ## try to score the first barcode.
+        if self.scoreFirst:
+            s = zmw.zmwMetric('HQRegionStartTime')
+            e = zmw.zmwMetric('HQRegionEndTime')
+            if s < e and s < self.startTimeCutoff:
+                seqs.insert(0, (zmw.read(0, self.barcodeLength + 
+                                         self.insertSidePad).basecalls(), None))
+        return seqs
+
     def scoreZMW(self, zmw):
-        def scoreBarcode(barcode, adapterSeqs):
-            return max(self.score(barcode[0], adapterSeqs[0]) + self.score(barcode[1], adapterSeqs[1]),
-                       self.score(barcode[1], adapterSeqs[0]) + self.score(barcode[0], adapterSeqs[1]))
-
-        barcodeScores = n.zeros(len(self.barcodeFasta))
         adapters = self.flankingSeqs(zmw)
-        for adapter in adapters:
-            barcodeScores += [scoreBarcode(barcode, adapter) for barcode in self.barcodeSeqs]
-        
-        return (zmw.holeNumber, len(adapters), barcodeScores)
+        adapterScores = [[]]*len(adapters)
+        barcodeScores = n.zeros(len(self.barcodeSeqs))
 
-    def scoreZMWs(self):
-        return [self.scoreZMW(zmw) for zmw in self.basH5]
+        for i,adapter in enumerate(adapters):
+            fscores = self.forwardScorer(adapter[0])
+            rscores = self.reverseScorer(adapter[0])
+            ffscores = self.forwardScorer(adapter[1])
+            rrscores = self.reverseScorer(adapter[1])
+            adapterScores[i] = n.maximum(fscores + rrscores, 
+                                         rscores + ffscores)
+            
+        barcodeScores = reduce(lambda x, y: x + y, adapterScores) if adapterScores \
+            else n.zeros(len(self.barcodeSeqs))
+        
+        return (zmw.holeNumber, len(adapters), barcodeScores, adapterScores)
+
+    def scoreZMWs(self, zmws = None):
+        if zmws is None:
+            zmws = self.basH5.sequencingZmws
+        
+        return [self.scoreZMW(self.basH5[zmw]) for zmw in zmws]
 
     # The expected record that is returned is: 
     # 
@@ -129,21 +172,9 @@ class BarcodeScorer(object):
                 else:
                     p = n.argsort([-(o[2][i] + o[2][i+1]) for i in 
                                     xrange(0, len(o[2]) - 1, 2)])[0]
-                
                 return (o[0], o[1], 2*p, o[2][2*p], 2*p + 1, o[2][2*p + 1])
 
         else:
             raise Exception("Unsupported scoring mode in BarcodeLabeler.py")
 
-        return [tabulate(score) for score in fScores] 
-            
-            
-
-
-
-    
-
-    
-    
-    
-    
+        return [tabulate(score) for score in fScores]

@@ -26,7 +26,7 @@
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS 
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #################################################################################$$
-from ctypes import CDLL
+from ctypes import *
 import os
 import numpy
 import pkg_resources
@@ -37,10 +37,33 @@ class SWaligner(object):
         self.SW_DLL_PATH = os.path.dirname(os.path.abspath(__file__)) + os.path.sep + "sw.so" 
         self._dll        = CDLL(self.SW_DLL_PATH)
         self.dpMat       = self._dll.allocate_dp_mat()
-
+    
     def score(self, tSeq, qSeq):
         return self._dll.compute_align_score(self.dpMat, tSeq, qSeq)
+    
+    def makeScorer(self, targets):
+        ScoreType = c_int * len(targets)
+        scores = ScoreType()
+        for i in range(0, len(scores)):
+            scores[i] = 0
+        
+        TargetType = c_char_p * len(targets)
+        targetSeqs = TargetType()
+        for i in range(0, len(targetSeqs)):
+            targetSeqs[i] = targets[i]
 
+        targetLen = len(targets)
 
+        def scorer(query):
+            if not query:
+                return numpy.zeros(len(targets))
+
+            self._dll.compute_align_scores(scores, 
+                                           targetLen, 
+                                           self.dpMat, 
+                                           query,
+                                           targetSeqs)
+            return numpy.array([scores[i] for i in xrange(0, len(scores))])
+        return scorer
 
         

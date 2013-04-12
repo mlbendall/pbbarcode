@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 #################################################################################$$
 # Copyright (c) 2011,2012, Pacific Biosciences of California, Inc.
 #
@@ -28,6 +27,7 @@
 # SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #################################################################################$$
 
+#!/usr/bin/env python
 import os
 import sys
 import argparse
@@ -47,7 +47,12 @@ from pbtools.pbbarcode.BarcodeLabeler import BarcodeScorer
 from pbtools.pbbarcode.BarcodeH5Reader import BarcodeH5Reader, BC_DS_PATH, BarcodeIdxException
 from pbcore.io import FastaReader, FastqWriter, FastqRecord
 
-__version__ = ".07"
+## XXX: to remove
+import subprocess
+from ConsensusCore import *
+from pbcore.io import FastaWriter, FastaRecord
+
+__version__ = ".08"
 
 ## Paths to the Barcode Datasets.
 BC_INFO_NAME   = "BarcodeInfo/Name"
@@ -76,6 +81,11 @@ class Pbbarcode(PBMultiToolRunner):
         parser_m.add_argument('--scoreMode', help = 'The mode in which the barcodes should be scored.',
                               choices = SCORE_MODES, default = 'symmetric', 
                               type = str)
+        parser_m.add_argument('--nZMWs', type = int, default = -1, help = 'Use nZMWs for testing')
+        parser_m.add_argument('--maxAdapters', type = int, default = 20, 
+                              help = 'If there are more than maxAdapters, ignore')
+        parser_m.add_argument('--scoreFirst', action = 'store_true', default = False,
+                              help = 'Whether to try to score the leftmost barcode in a trace.')
         parser_m.add_argument('barcodeFile', metavar = 'barcode.fasta', 
                               help = 'Input barcode fasta file')
         parser_m.add_argument('inputFile', metavar = 'input.fofn',
@@ -109,30 +119,53 @@ class Pbbarcode(PBMultiToolRunner):
                                                     'the default is to use the CCS reads.'),
                               action = "store_true",
                               default = False)
-        
+
+        desc = ['Takes a bas.h5 fofn and a barcode.h5 fofn and produces',
+                'a fasta file for each barcode with a consensus sequence.']
+        parser_s = subparsers.add_parser('consensus', description = "\n".join(desc),
+                                         parents = [self.parser],
+                                         help = "compute consensus")
+        parser_s.add_argument('inputFofn', metavar = 'input.fofn',
+                              help = 'input bas.h5 fofn file')
+        parser_s.add_argument('barcodeFofn', metavar = 'barcode.fofn',
+                              help = 'input barcode.h5 fofn file')
+        parser_s.add_argument('--trim', help = 'trim off barcodes and any excess constant sequence',
+                              default = 20, type = int)
+        parser_s.add_argument('--subreads', help = ('whether to produce fastq files for the subreads;' +
+                                                    'the default is to use the CCS reads.'),
+                              action = "store_true",
+                              default = False)
+
     def getVersion(self):
         return __version__
 
     def makeBarcodeH5FromBasH5(self, basH5):
-        # write the new file. 
-        # bug 23071
-        # oFile = '/'.join((self.args.outDir, basH5.movieName + '.bc.h5'))
-        oFile = '/'.join((self.args.outDir, re.sub(r'\.ba[x|s]\.h5', '.bc.h5', 
+        # check to make sure we can write the output before we do a
+        # bunch of work.
+        oFile = '/'.join((self.args.outDir, re.sub(r'.ba[x|s].h5', '.bc.h5', 
                                                    os.path.basename(basH5.filename))))
-        logging.info("Writing to: %s" % oFile)
+        logging.debug("Setting up output file: %s" % oFile)
+        outH5 = h5.File(oFile, 'a')
 
         logging.info("Labeling: %s" % basH5.filename)
         labeler = BarcodeScorer(basH5, FastaReader(self.args.barcodeFile),
                                 self.args.adapterSidePad, self.args.insertSidePad,
-                                self.args.scoreMode)
-        allScores = labeler.scoreZMWs()
+                                scoreMode = self.args.scoreMode, maxHits = self.args.maxAdapters,
+                                scoreFirst = self.args.scoreFirst, startTimeCutoff = 2)
+        
+        if self.args.nZMWs < 0:
+            zmws = basH5.sequencingZmws
+        else:
+            zmws = basH5.sequencingZmws[0:self.args.nZMWs]
+
+        allScores = labeler.scoreZMWs(zmws = zmws)
         logging.debug("Scored ZMWs")
 
         bestScores = labeler.chooseBestBarcodes(allScores)
         logging.debug("Chose best barcodes")
 
-        ## write.
-        outH5  = h5.File(oFile, 'a')
+        ## write the new file. 
+        logging.info("Writing to: %s" % oFile)
         outDta = n.vstack(bestScores)
         if BC_DS_PATH in outH5:
             del outH5[BC_DS_PATH]
@@ -144,6 +177,10 @@ class Pbbarcode(PBMultiToolRunner):
                                                'barcodeScore1', 'barcodeIdx2', 'barcodeScore2'], 
                                               dtype = h5.new_vlen(str))
         bestDS.attrs['scoreMode'] = self.args.scoreMode
+
+        ## add the all dataset. 
+        ## from IPython import embed; embed() 
+
         outH5.close()
         return oFile
 
@@ -192,12 +229,13 @@ class Pbbarcode(PBMultiToolRunner):
         bcDS.attrs['BarcodeMode'] = bcReader.scoreMode
         H5.close()
         
-    def emitFastqs(self):
+
+    def getFastqs(self):
         # step through the bas.h5 and barcode.h5 files and emit 
         # reads for each of these. 
         inputFofn = open(self.args.inputFofn).read().splitlines()
         barcodeFofn = open(self.args.barcodeFofn).read().splitlines()
-        outDir = self.args.outDir
+
         outFiles = {} 
         
         for basFile, barcodeFile in zip(inputFofn, barcodeFofn):
@@ -214,7 +252,7 @@ class Pbbarcode(PBMultiToolRunner):
                             if self.args.subreads:
                                 reads = zmw.subreads()
                             else:
-                                reads = [zmw.ccsRead()]
+                                reads = [zmw.ccsRead]
                             if any(reads):
                                 if not label in outFiles.keys():
                                     outFiles[label] = []
@@ -225,14 +263,19 @@ class Pbbarcode(PBMultiToolRunner):
                 except BarcodeIdxException, e:
                     continue
         
+        return outFiles
+
+    def emitFastqs(self):
+        outFiles = self.getFastqs()
+        outDir   = self.args.outDir
         if not os.path.exists(self.args.outDir):
             os.makedirs(self.args.outDir)
         
         for k in outFiles.keys():
             with FastqWriter("%s/%s.fastq" % (self.args.outDir, k)) as w:
                 for e in outFiles[k]:
+                    ## XXX : Empty Strings!! 
                     w.writeRecord(trimFastqRecord(e, self.args.trim))
-            
 
     def run(self):
         logging.debug("Arguments" + str(self.args))
@@ -242,6 +285,10 @@ class Pbbarcode(PBMultiToolRunner):
             self.labelAlignments()
         elif self.args.subName == 'emitFastqs':
             self.emitFastqs()
+        elif self.args.subName == 'consensus':
+            self.consensus()
+        else:
+            sys.exit(1)
 
 def trimFastqRecord(fastqRecord, trim):
     return FastqRecord(fastqRecord.name,
