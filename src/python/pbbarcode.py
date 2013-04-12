@@ -117,7 +117,7 @@ class Pbbarcode(PBMultiToolRunner):
         # write the new file. 
         # bug 23071
         # oFile = '/'.join((self.args.outDir, basH5.movieName + '.bc.h5'))
-        oFile = '/'.join((self.args.outDir, re.sub(r'.ba[x|s].h5', '.bc.h5', 
+        oFile = '/'.join((self.args.outDir, re.sub(r'\.ba[x|s]\.h5', '.bc.h5', 
                                                    os.path.basename(basH5.filename))))
         logging.info("Writing to: %s" % oFile)
 
@@ -159,7 +159,9 @@ class Pbbarcode(PBMultiToolRunner):
     def labelAlignments(self):
         logging.info("Labeling alignments using: %s" % self.args.inputFofn)
         def movieName(movieFile):
-            return os.path.basename(movieFile).replace('.bc.h5', '')
+            r = os.path.basename(movieFile).replace('.bc.h5', '')
+            # ibid, bug 23071
+            return re.sub(r'\.[1-9]$', '', r)
             
         barcodeFofn = open(self.args.inputFofn).read().splitlines()
         movieMap = { movieName(movie) : BarcodeH5Reader(movie) for movie in barcodeFofn }
