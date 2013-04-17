@@ -38,7 +38,7 @@ _RC_MAP = dict(zip('ACGTacgt-N','TGCAtgca-N'))
 class BarcodeScorer(object):
     def __init__(self, basH5, barcodeFasta, adapterSidePad = 0, insertSidePad = 4, 
                  scoreMode = 'symmetric', maxHits = 10, scoreFirst = True, 
-                 startTimeCutoff = 5):
+                 startTimeCutoff = 1, scorePairedNew = False):
         self.basH5 = basH5
         self.barcodeFasta = list(barcodeFasta)
         self.aligner = Aligner.SWaligner()
@@ -52,6 +52,7 @@ class BarcodeScorer(object):
         self.maxHits = maxHits
         self.scoreFirst = scoreFirst
         self.startTimeCutoff = startTimeCutoff
+        self.scorePairedNew = scorePairedNew
 
         self.forwardScorer = self.aligner.makeScorer([x[0] for x in self.barcodeSeqs])
         self.reverseScorer = self.aligner.makeScorer([x[1] for x in self.barcodeSeqs])
@@ -110,9 +111,11 @@ class BarcodeScorer(object):
         if self.scoreFirst:
             s = zmw.zmwMetric('HQRegionStartTime')
             e = zmw.zmwMetric('HQRegionEndTime')
-            if s < e and s < self.startTimeCutoff:
-                seqs.insert(0, (zmw.read(0, self.barcodeLength + 
-                                         self.insertSidePad).basecalls(), None))
+            # s<e => has HQ. 
+            if s < e and s <= self.startTimeCutoff:
+                l = self.barcodeLength + self.insertSidePad
+                l = l if zmw.hqRegion[1] > l else zmw.hqRegion[1]
+                seqs.insert(0, (zmw.read(0, l).basecalls(), None))
         return seqs
 
     def scoreZMW(self, zmw):
@@ -170,8 +173,25 @@ class BarcodeScorer(object):
                     # will multiply it up.
                     p = (p if p % 2 == 0 else p - 1)/2
                 else:
-                    p = n.argsort([-(o[2][i] + o[2][i+1]) for i in 
-                                    xrange(0, len(o[2]) - 1, 2)])[0]
+                    # score the pairs by scoring the two alternate
+                    # ways they could have been put on the molecule. A
+                    # missed adapter is an issue. 
+                    if self.scorePairedNew:
+                        scores  = o[3]
+                        results = n.zeros(len(self.barcodeSeqs))
+
+                        for i in xrange(0, len(self.barcodeSeqs), 2):
+                            pths = [0,0]
+                            for j in xrange(0, len(scores)):
+                                pths[j % 2] += scores[j][i]
+                                pths[1 - j % 2] += scores[j][i + 1]
+
+                            results[i] = max(pths)
+                        p = n.argmax(results)/2
+                    else:
+                        p = n.argsort([-(o[2][i] + o[2][i+1]) for i in 
+                                        xrange(0, len(o[2]) - 1, 2)])[0]
+
                 return (o[0], o[1], 2*p, o[2][2*p], 2*p + 1, o[2][2*p + 1])
 
         else:

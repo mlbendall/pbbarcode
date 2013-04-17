@@ -44,13 +44,9 @@ from pbcore.util.ToolRunner import PBMultiToolRunner
 from pbcore.io.BasH5Reader import *
 from pbcore.io.CmpH5Reader import *
 from pbtools.pbbarcode.BarcodeLabeler import BarcodeScorer
-from pbtools.pbbarcode.BarcodeH5Reader import BarcodeH5Reader, BC_DS_PATH, BarcodeIdxException
+from pbtools.pbbarcode.BarcodeH5Reader import BarcodeH5Reader, BC_DS_PATH, \
+    BarcodeIdxException
 from pbcore.io import FastaReader, FastqWriter, FastqRecord
-
-## XXX: to remove
-import subprocess
-from ConsensusCore import *
-from pbcore.io import FastaWriter, FastaRecord
 
 __version__ = ".08"
 
@@ -85,6 +81,9 @@ class Pbbarcode(PBMultiToolRunner):
                               help = 'If there are more than maxAdapters, ignore')
         parser_m.add_argument('--scoreFirst', action = 'store_true', default = False,
                               help = 'Whether to try to score the leftmost barcode in a trace.')
+
+        parser_m.add_argument('--new', action = 'store_true', default = False)
+
         parser_m.add_argument('barcodeFile', metavar = 'barcode.fasta', 
                               help = 'Input barcode fasta file')
         parser_m.add_argument('inputFile', metavar = 'input.fofn',
@@ -138,7 +137,7 @@ class Pbbarcode(PBMultiToolRunner):
     def makeBarcodeH5FromBasH5(self, basH5):
         # check to make sure we can write the output before we do a
         # bunch of work.
-        oFile = '/'.join((self.args.outDir, re.sub(r'.ba[x|s].h5', '.bc.h5', 
+        oFile = '/'.join((self.args.outDir, re.sub(r'\.ba[x|s]\.h5', '.bc.h5', 
                                                    os.path.basename(basH5.filename))))
         logging.debug("Setting up output file: %s" % oFile)
         outH5 = h5.File(oFile, 'a')
@@ -147,7 +146,8 @@ class Pbbarcode(PBMultiToolRunner):
         labeler = BarcodeScorer(basH5, FastaReader(self.args.barcodeFile),
                                 self.args.adapterSidePad, self.args.insertSidePad,
                                 scoreMode = self.args.scoreMode, maxHits = self.args.maxAdapters,
-                                scoreFirst = self.args.scoreFirst, startTimeCutoff = 2)
+                                scoreFirst = self.args.scoreFirst, startTimeCutoff = 2, 
+                                scorePairedNew = self.args.new)
         
         if self.args.nZMWs < 0:
             zmws = basH5.sequencingZmws
@@ -174,8 +174,6 @@ class Pbbarcode(PBMultiToolRunner):
                                               dtype = h5.new_vlen(str))
         bestDS.attrs['scoreMode'] = self.args.scoreMode
 
-        ## add the all dataset. 
-        ## from IPython import embed; embed() 
 
         outH5.close()
         return oFile

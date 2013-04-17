@@ -22,7 +22,7 @@ class BarcodeH5Reader(object):
         self.bestDS    = self.h5File[BC_DS_PATH]
         self.scoreMode = self.bestDS.attrs['scoreMode']
         self.barcodes  = self.bestDS.attrs['barcodes']
-        ## note: I hack of the ZMW.
+        ## note: I hack off the ZMW.
         self.holeNumberToBC = dict(zip(self.bestDS[:,0],
                                        self.bestDS[:,1:self.bestDS.shape[1]]))
              
