@@ -257,7 +257,7 @@ class Pbbarcode(PBMultiToolRunner):
                         zmw = basH5[zmws[row, 0]]
                         if zmw:
                             if self.args.subreads:
-                                reads = zmw.subreads()
+                                reads = zmw.subreads
                             else:
                                 reads = [zmw.ccsRead]
                             if any(reads):

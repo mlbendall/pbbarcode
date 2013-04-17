@@ -14,3 +14,6 @@
   $ pbbarcode.py labelAlignments barcode.fofn aligned_reads.cmp.h5
   $ echo $?
   0
+  $ pbbarcode.py emitFastqs --subreads bas.fofn barcode.fofn
+  $ echo $?
+  0
