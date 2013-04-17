@@ -9,6 +9,7 @@ from pbcore.io.CmpH5Reader import *
 
 NULL_BARCODE   = "--"
 BC_DS_PATH     = "BarcodeCalls/best"
+BC_DS_ALL_PATH = "BarcodeCalls/all"
 
 def makeBCLabel(s1, s2):
     return NULL_BARCODE.join((s1, s2))

@@ -37,8 +37,8 @@ _RC_MAP = dict(zip('ACGTacgt-N','TGCAtgca-N'))
 
 class BarcodeScorer(object):
     def __init__(self, basH5, barcodeFasta, adapterSidePad = 0, insertSidePad = 4, 
-                 scoreMode = 'symmetric', maxHits = 10, scoreFirst = True, 
-                 startTimeCutoff = 1, scorePairedNew = False):
+                 scoreMode = 'symmetric', maxHits = 10, scoreFirst = False, 
+                 startTimeCutoff = 1):
         self.basH5 = basH5
         self.barcodeFasta = list(barcodeFasta)
         self.aligner = Aligner.SWaligner()
@@ -52,7 +52,6 @@ class BarcodeScorer(object):
         self.maxHits = maxHits
         self.scoreFirst = scoreFirst
         self.startTimeCutoff = startTimeCutoff
-        self.scorePairedNew = scorePairedNew
 
         self.forwardScorer = self.aligner.makeScorer([x[0] for x in self.barcodeSeqs])
         self.reverseScorer = self.aligner.makeScorer([x[1] for x in self.barcodeSeqs])
@@ -104,7 +103,7 @@ class BarcodeScorer(object):
         adapterRegions = zmw.adapterRegions
         if len(adapterRegions) > self.maxHits:
             adapterRegions = adapterRegions[0:self.maxHits]
-                
+        
         seqs = [fromRange(start, end) for (start, end) in adapterRegions]
 
         ## try to score the first barcode.
@@ -162,9 +161,7 @@ class BarcodeScorer(object):
                 # only see one adapter, then you are going to sum both
                 # R1+F1 on the same putative barcode - this might be a
                 # lower score than some alternate F or
-                # R. Realistically, in paired mode you should be
-                # aligning the pairs to the sides of the molecules,
-                # but this is probably a good work around for now.
+                # R.
                 if o[1] == 1:
                     p = n.argsort(-o[2])[0]
                     # now p can be either F1 or R1, but below, I need
@@ -176,21 +173,21 @@ class BarcodeScorer(object):
                     # score the pairs by scoring the two alternate
                     # ways they could have been put on the molecule. A
                     # missed adapter is an issue. 
-                    if self.scorePairedNew:
-                        scores  = o[3]
-                        results = n.zeros(len(self.barcodeSeqs))
+                    scores  = o[3]
+                    results = n.zeros(len(self.barcodeSeqs))
 
-                        for i in xrange(0, len(self.barcodeSeqs), 2):
-                            pths = [0,0]
-                            for j in xrange(0, len(scores)):
-                                pths[j % 2] += scores[j][i]
-                                pths[1 - j % 2] += scores[j][i + 1]
+                    for i in xrange(0, len(self.barcodeSeqs), 2):
+                        pths = [0,0]
+                        for j in xrange(0, len(scores)):
+                            pths[j % 2] += scores[j][i]
+                            pths[1 - j % 2] += scores[j][i + 1]
 
-                            results[i] = max(pths)
-                        p = n.argmax(results)/2
-                    else:
-                        p = n.argsort([-(o[2][i] + o[2][i+1]) for i in 
-                                        xrange(0, len(o[2]) - 1, 2)])[0]
+                        results[i] = max(pths)
+                    p = n.argmax(results)/2
+
+                    # This block was how I used to score the pairs.
+                    # p = n.argsort([-(o[2][i] + o[2][i+1]) for i in 
+                    #                 xrange(0, len(o[2]) - 1, 2)])[0]
 
                 return (o[0], o[1], 2*p, o[2][2*p], 2*p + 1, o[2][2*p + 1])
 

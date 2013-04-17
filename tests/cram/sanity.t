@@ -5,15 +5,11 @@
   $ echo $INBH51 > bas.fofn
   $ echo $INBH52 >> bas.fofn
   $ pbbarcode.py labelZMWs $BARCODE_FASTA bas.fofn
-  $ echo $?
-  0
-  $ pbbarcode.py emitFastqs bas.fofn barcode.fofn
-  $ echo $?
-  0
+  $ pbbarcode.py labelZMWs --scoreMode paired $BARCODE_FASTA bas.fofn
+  $ pbbarcode.py labelZMWs --scoreMode paired --scoreFirst $BARCODE_FASTA bas.fofn
+  $ pbbarcode.py labelZMWs --scoreMode paired --scoreFirst --adapterSidePad 0 --insertSidePad 0 $BARCODE_FASTA bas.fofn
+  $ pbbarcode.py emitFastqs --fasta bas.fofn barcode.fofn
+  $ pbbarcode.py emitFastqs --trim 20 bas.fofn barcode.fofn
+  $ pbbarcode.py emitFastqs --subreads --trim 20 bas.fofn barcode.fofn
   $ cp $INH5 ./aligned_reads.cmp.h5         
-  $ pbbarcode.py labelAlignments barcode.fofn aligned_reads.cmp.h5
-  $ echo $?
-  0
-  $ pbbarcode.py emitFastqs --subreads bas.fofn barcode.fofn
-  $ echo $?
-  0
+  $ pbbarcode.py labelAlignments barcode.fofn aligned_reads.cmp.h5  
