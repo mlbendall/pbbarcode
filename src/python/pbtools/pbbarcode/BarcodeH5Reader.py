@@ -1,3 +1,31 @@
+#################################################################################$$
+# Copyright (c) 2011,2012, Pacific Biosciences of California, Inc.
+#
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without 
+# modification, are permitted provided that the following conditions are met:
+# * Redistributions of source code must retain the above copyright notice, this 
+#   list of conditions and the following disclaimer.
+# * Redistributions in binary form must reproduce the above copyright notice, 
+#   this list of conditions and the following disclaimer in the documentation 
+#   and/or other materials provided with the distribution.
+# * Neither the name of Pacific Biosciences nor the names of its contributors 
+#   may be used to endorse or promote products derived from this software 
+#   without specific prior written permission.
+# 
+# THIS SOFTWARE IS PROVIDED BY PACIFIC BIOSCIENCES AND ITS CONTRIBUTORS 
+# "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED 
+# TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR 
+# PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL PACIFIC BIOSCIENCES OR ITS 
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, 
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, 
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+# LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON 
+# ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+# (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS 
+# SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#################################################################################$$
 import os
 import logging
 
@@ -17,6 +45,55 @@ def makeBCLabel(s1, s2):
 class BarcodeIdxException(Exception):
     pass
 
+def create(movieName):
+    ## XXX : Detecting multi-part; pretty ugly. 
+    if os.path.exists(movieName + '.bc.h5'):
+        logging.debug("Instantiating BarcodeH5Reader")
+        return BarcodeH5Reader(movieName + '.bc.h5')
+    else:
+        logging.debug("Instantiating MPBarcodeReader")
+        parts = map(lambda z : '.'.join((movieName, str(z), 'bc.h5')), [1,2,3])
+        parts = filter(lambda p : os.path.exists(p), parts)
+        if parts:
+            return MPBarcodeH5Reader(parts)
+        else:
+            raise Exception("Unable to instantiate a BarcodeH5Reader")
+
+class MPBarcodeH5Reader(object):
+    def __init__(self, fnames):
+        self.parts = map(BarcodeH5Reader, fnames)
+        def rng(x):
+            return (n.min(x), n.max(x))
+        # these aren't the ranges of ZMWs, but the ranges for the
+        # scored ZMWs.
+        self.bins = map(lambda z : rng(z.bestDS[:,0]), self.parts)
+
+    def choosePart(self, holeNumber):
+        for i,b in enumerate(self.bins):
+            if holeNumber >= b[0] and holeNumber <= b[1]:
+                return self.parts[i]
+        # Return None meaning the zmw is ouf of the range of
+        # the scored ZMWs for all parts.
+        return None
+
+    def getBarcodeTupleForZMW(self, holeNumber):
+        part = self.choosePart(holeNumber)
+        if part:
+            return part.getBarcodeTupleForZMW(holeNumber)
+        else:
+            # I have not scored this alignment, therefore we return the
+            # NULL tuple
+            return self.parts[0].nullBarcodeTuple()
+
+    def getZMWsForBarcode(self, barcodeName):
+        raise NotImplementedError("Directly use BarcodeH5Reader for this task")
+    
+    def getBarcodeLabels(self):
+        return self.parts[0].bcLabels
+
+    def getScoreMode(self):
+        return self.parts[0].scoreMode
+        
 class BarcodeH5Reader(object):
     def __init__(self, fname):
         self.h5File    = h5.File(fname, 'r')
@@ -50,6 +127,14 @@ class BarcodeH5Reader(object):
         self.scoreModeIdx = n.array([ self.getBarcodeTupleForZMW(hn)[0] 
                                       for hn in self.bestDS[:,0]])
 
+    def getBarcodeLabels(self):
+        return self.bcLabels
+    def getScoreMode(self):
+        return self.scoreMode
+
+    def nullBarcodeTuple(self):
+        return (len(self.bcLabels) - 1, 0, 0)
+
     def getBarcodeTupleForZMW(self, holeNumber):
         """Returns a tuple of (barcodeIdx, score, numberOfPasses)
         where barcodeIdx is an index into bcLabels"""
@@ -64,7 +149,7 @@ class BarcodeH5Reader(object):
             elif self.scoreMode == 'paired':
                 return (d[1]/2, d[2] + d[4], d[0])
         except:
-            return (len(self.bcLabels) - 1, 0, 0)
+            return self.nullBarcodeTuple()
 
     def getZMWsForBarcode(self, barcodeName):
         """Returns all the ZMWs that had barcodeName mapping to it,

@@ -36,6 +36,7 @@ import tempfile
 import shutil
 import pkg_resources
 import re
+from multiprocessing import Pool
 
 import h5py as h5
 import numpy as n
@@ -44,12 +45,12 @@ from pbcore.util.ToolRunner import PBMultiToolRunner
 from pbcore.io.BasH5Reader import *
 from pbcore.io.CmpH5Reader import *
 from pbtools.pbbarcode.BarcodeLabeler import BarcodeScorer
-from pbtools.pbbarcode.BarcodeH5Reader import BarcodeH5Reader, BC_DS_PATH, \
-    BarcodeIdxException, BC_DS_ALL_PATH
+from pbtools.pbbarcode.BarcodeH5Reader import BC_DS_PATH, BarcodeIdxException,\
+    BC_DS_ALL_PATH, create, BarcodeH5Reader
 from pbcore.io import FastaReader, FastqWriter, FastqRecord, \
     FastaWriter, FastaRecord
 
-__version__ = ".09"
+__version__ = ".1"
 
 ## Paths to the Barcode Datasets.
 BC_INFO_NAME   = "BarcodeInfo/Name"
@@ -57,10 +58,7 @@ BC_INFO_ID     = "BarcodeInfo/ID"
 BC_ALN_INFO_DS = "AlnInfo/Barcode"
 SCORE_MODES    = ['symmetric', 'paired', 'asymmetric']
 
-## XXX : I ripped these out of the class to try to use multiprocessing
-## - let me assure you that endeavour was fruitless.
-
-def makeBarcodeH5FromBasH5(runner, basH5):
+def makeBarcodeH5FromBasH5(basH5):
     # check to make sure we can write the output before we do a
     # bunch of work.
     oFile = '/'.join((runner.args.outDir, re.sub(r'\.ba[x|s]\.h5', '.bc.h5', 
@@ -71,10 +69,10 @@ def makeBarcodeH5FromBasH5(runner, basH5):
     logging.info("Labeling: %s" % basH5.filename)
     labeler = BarcodeScorer(basH5, FastaReader(runner.args.barcodeFile),
                             runner.args.adapterSidePad, runner.args.insertSidePad,
-                            scoreMode = runner.args.scoreMode, maxHits = runner.args.maxAdapters,
+                            scoreMode = runner.args.scoreMode, 
+                            maxHits = runner.args.maxAdapters,
                             scoreFirst = runner.args.scoreFirst, 
-                            startTimeCutoff = 1) # has to start in the first 1 second.
-
+                            startTimeCutoff = 1) 
     if runner.args.nZMWs < 0:
         zmws = basH5.sequencingZmws
     else:
@@ -102,7 +100,7 @@ def makeBarcodeH5FromBasH5(runner, basH5):
                                           dtype = h5.new_vlen(str))
     bestDS.attrs['scoreMode'] = runner.args.scoreMode
 
-    ## all data set for custom work.
+    ## all dataset.
     def makeRecord(r):
         #  (zmw, adapter, barcode, score)
         def makeArray(l, v):
@@ -135,31 +133,42 @@ def makeBarcodeH5FromBasH5(runner, basH5):
     outH5.close()
     return oFile
 
-def makeBarcodeFofnFromBasFofn(runner):
+def mpWrapper(f):
+    return makeBarcodeH5FromBasH5(BasH5Reader(f))
+
+def makeBarcodeFofnFromBasFofn():
     inputFofn = runner.args.inputFile
     inFiles = open(inputFofn).read().splitlines()
-    newFiles = [makeBarcodeH5FromBasH5(runner, BasH5Reader(basH5)) for basH5 in inFiles]
+    if runner.args.nProcs <= 1:
+        newFiles = map(mpWrapper, inFiles)
+    else:
+        pool = Pool(runner.args.nProcs)
+        logging.debug("Using %d processes." % runner.args.nProcs)
+        newFiles = pool.map(mpWrapper, inFiles)
+
     oFile = open(runner.args.outFofn, 'w')
     for nF in newFiles:
         oFile.write(nF + "\n")
     oFile.close()
 
-def labelAlignments(runner):
+def labelAlignments():
     logging.info("Labeling alignments using: %s" % runner.args.inputFofn)
     def movieName(movieFile):
-        r = os.path.basename(movieFile).replace('.bc.h5', '')
-        # ibid, bug 23071
+        r = os.path.basename(movieFile).replace('.bc.h5', '') 
         return re.sub(r'\.[1-9]$', '', r)
 
     barcodeFofn = open(runner.args.inputFofn).read().splitlines()
-    movieMap = { movieName(movie) : BarcodeH5Reader(movie) for movie in barcodeFofn }
+    movieNames  = n.unique(map(movieName, barcodeFofn))
 
+    movieMap    = {movieName(movie) : create(movie) for movie in 
+                    movieNames}
     with CmpH5Reader(runner.args.cmpH5) as cmpH5:
         bcDS = n.zeros((len(cmpH5), 3), dtype = "int32")
         for (i, aln) in enumerate(cmpH5):
             bcFile = movieMap[aln.movieInfo.Name]
             zmwCall = bcFile.getBarcodeTupleForZMW(aln.HoleNumber)
             bcDS[i,:] = n.array(zmwCall)
+
 
     H5 = h5.File(runner.args.cmpH5, 'r+')
     if BC_INFO_ID in H5:
@@ -170,18 +179,18 @@ def labelAlignments(runner):
     # we use the first one to get the labels, if somehow they
     # don't have all of the same stuff that will be an issue.
     bcReader = movieMap[movieMap.keys()[0]]
-    bcLabels = bcReader.bcLabels
+    bcLabels = bcReader.getBarcodeLabels()
     H5.create_dataset(BC_INFO_ID, data = n.array(range(0, len(bcLabels))), dtype = 'int32')
     H5.create_dataset(BC_INFO_NAME, data = bcLabels, dtype = h5.new_vlen(str))
     if BC_ALN_INFO_DS in H5:
         del H5[BC_ALN_INFO_DS]
     bcDS = H5.create_dataset(BC_ALN_INFO_DS, data = bcDS, dtype = 'int32')
     bcDS.attrs['ColumnNames'] = n.array(['index', 'score', 'count'])
-    bcDS.attrs['BarcodeMode'] = bcReader.scoreMode
+    bcDS.attrs['BarcodeMode'] = bcReader.getScoreMode()
     H5.close()
 
 
-def getFastqs(runner):
+def getFastqs():
     # step through the bas.h5 and barcode.h5 files and emit 
     # reads for each of these. 
     inputFofn = n.array(open(runner.args.inputFofn).read().splitlines())
@@ -205,6 +214,7 @@ def getFastqs(runner):
     for basFile, barcodeFile in zip(inputFofn, barcodeFofn):
         logging.info("Processing: %s %s" % (basFile, barcodeFile))
         basH5 = BasH5Reader(basFile)
+        # XXX: here, I'll use this interface because it is easier
         bcH5  = BarcodeH5Reader(barcodeFile)
 
         for label in bcH5.bcLabels:
@@ -229,8 +239,8 @@ def getFastqs(runner):
 
     return outFiles
 
-def emitFastqs(runner):
-    outFiles = getFastqs(runner)
+def emitFastqs():
+    outFiles = getFastqs()
     outDir   = runner.args.outDir
     fasta    = runner.args.fasta
 
@@ -280,6 +290,7 @@ class Pbbarcode(PBMultiToolRunner):
         parser_m.add_argument('--scoreFirst', action = 'store_true', default = False,
                               help = 'Whether to try to score the leftmost barcode in a trace.')
         parser_m.add_argument('--nZMWs', type = int, default = -1, help = 'Use nZMWs for testing')
+        parser_m.add_argument('--nProcs', type = int, default = 8, help = 'How many processes to use')
         
         parser_m.add_argument('barcodeFile', metavar = 'barcode.fasta', 
                               help = 'Input barcode fasta file')
@@ -324,17 +335,19 @@ class Pbbarcode(PBMultiToolRunner):
         logging.debug("Arguments" + str(self.args))
         
         if self.args.subCommand == 'labelZMWs':
-            makeBarcodeFofnFromBasFofn(self)
+            makeBarcodeFofnFromBasFofn()
         elif self.args.subCommand == 'labelAlignments':
-            labelAlignments(self)
+            labelAlignments()
         elif self.args.subCommand == 'emitFastqs':
-            emitFastqs(self)
+            emitFastqs()
         else:
             sys.exit(1)
 
-            
+           
 if __name__ == '__main__':    
-    sys.exit(Pbbarcode().start())
+    # runner becomes a global to facilitate 'multiprocessing'
+    runner = Pbbarcode()
+    sys.exit(runner.start())
     
 
 

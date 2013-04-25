@@ -106,7 +106,7 @@ class BarcodeScorer(object):
         
         seqs = [fromRange(start, end) for (start, end) in adapterRegions]
 
-        ## try to score the first barcode.
+        ## try to grab the first barcode.
         if self.scoreFirst:
             s = zmw.zmwMetric('HQRegionStartTime')
             e = zmw.zmwMetric('HQRegionEndTime')
@@ -115,12 +115,14 @@ class BarcodeScorer(object):
                 l = self.barcodeLength + self.insertSidePad
                 l = l if zmw.hqRegion[1] > l else zmw.hqRegion[1]
                 seqs.insert(0, (zmw.read(0, l).basecalls(), None))
+
         return seqs
 
     def scoreZMW(self, zmw):
         adapters = self.flankingSeqs(zmw)
         adapterScores = [[]]*len(adapters)
         barcodeScores = n.zeros(len(self.barcodeSeqs))
+        nScored       = 0
 
         for i,adapter in enumerate(adapters):
             fscores = self.forwardScorer(adapter[0])
@@ -129,11 +131,14 @@ class BarcodeScorer(object):
             rrscores = self.reverseScorer(adapter[1])
             adapterScores[i] = n.maximum(fscores + rrscores, 
                                          rscores + ffscores)
+            nScored += 2 if adapter[0] and adapter[1] else \
+                1 if adapter[0] or adapter[1] else 0
             
+        # summarize the scores. 
         barcodeScores = reduce(lambda x, y: x + y, adapterScores) if adapterScores \
             else n.zeros(len(self.barcodeSeqs))
         
-        return (zmw.holeNumber, len(adapters), barcodeScores, adapterScores)
+        return (zmw.holeNumber, nScored, barcodeScores, adapterScores)
 
     def scoreZMWs(self, zmws = None):
         if zmws is None:
@@ -184,10 +189,6 @@ class BarcodeScorer(object):
 
                         results[i] = max(pths)
                     p = n.argmax(results)/2
-
-                    # This block was how I used to score the pairs.
-                    # p = n.argsort([-(o[2][i] + o[2][i+1]) for i in 
-                    #                 xrange(0, len(o[2]) - 1, 2)])[0]
 
                 return (o[0], o[1], 2*p, o[2][2*p], 2*p + 1, o[2][2*p + 1])
 
