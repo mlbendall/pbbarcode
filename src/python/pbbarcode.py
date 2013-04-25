@@ -153,22 +153,21 @@ def makeBarcodeFofnFromBasFofn():
 
 def labelAlignments():
     logging.info("Labeling alignments using: %s" % runner.args.inputFofn)
-    def movieName(movieFile):
-        r = os.path.basename(movieFile).replace('.bc.h5', '') 
-        return re.sub(r'\.[1-9]$', '', r)
+
+    def movieBasePath(bcFile):
+        r = os.path.basename(bcFile).replace('.bc.h5', '')
+        return '/'.join((os.path.dirname(bcFile), re.sub(r'\.[1-9]$', '', r)))
 
     barcodeFofn = open(runner.args.inputFofn).read().splitlines()
-    movieNames  = n.unique(map(movieName, barcodeFofn))
+    movieNames  = n.unique(map(movieBasePath, barcodeFofn))
+    movieMap    = { os.path.basename(movie):create(movie) for movie in movieNames }
 
-    movieMap    = {movieName(movie) : create(movie) for movie in 
-                    movieNames}
     with CmpH5Reader(runner.args.cmpH5) as cmpH5:
         bcDS = n.zeros((len(cmpH5), 3), dtype = "int32")
         for (i, aln) in enumerate(cmpH5):
             bcFile = movieMap[aln.movieInfo.Name]
             zmwCall = bcFile.getBarcodeTupleForZMW(aln.HoleNumber)
             bcDS[i,:] = n.array(zmwCall)
-
 
     H5 = h5.File(runner.args.cmpH5, 'r+')
     if BC_INFO_ID in H5:

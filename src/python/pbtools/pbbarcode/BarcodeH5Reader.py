@@ -53,7 +53,9 @@ def create(movieName):
     else:
         logging.debug("Instantiating MPBarcodeReader")
         parts = map(lambda z : '.'.join((movieName, str(z), 'bc.h5')), [1,2,3])
+        logging.debug("Trying to load parts:" + '\n'.join(parts))
         parts = filter(lambda p : os.path.exists(p), parts)
+
         if parts:
             return MPBarcodeH5Reader(parts)
         else:
