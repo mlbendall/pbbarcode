@@ -87,6 +87,13 @@ class MPBarcodeH5Reader(object):
             # NULL tuple
             return self.parts[0].nullBarcodeTuple()
 
+    def getExtendedBarcodeInfoForZMW(self, holeNumber):
+        part = self.choosePart(holeNumber)
+        if part:
+            return part.getExtendedBarcodeInfoForZMW(holeNumber)
+        else:
+            return None
+
     def getZMWsForBarcode(self, barcodeName):
         raise NotImplementedError("Directly use BarcodeH5Reader for this task")
     
@@ -129,6 +136,9 @@ class BarcodeH5Reader(object):
         self.scoreModeIdx = n.array([ self.getBarcodeTupleForZMW(hn)[0] 
                                       for hn in self.bestDS[:,0]])
 
+        ## This will be used if we are using the extended "All" dataset.
+        self.mapToAll = None
+
     def getBarcodeLabels(self):
         return self.bcLabels
     def getScoreMode(self):
@@ -136,6 +146,25 @@ class BarcodeH5Reader(object):
 
     def nullBarcodeTuple(self):
         return (len(self.bcLabels) - 1, 0, 0)
+
+    def getExtendedBarcodeInfoForZMW(self, holeNumber):
+        # we'll do this on demand
+        if not self.mapToAll:
+            self.mapToAll = {}
+            self.bcAllDS  = self.h5File[BC_DS_ALL_PATH][:]
+            for r in xrange(0, self.bcAllDS.shape[0]):
+                z = self.bcAllDS[r, 0]
+                if not z in self.mapToAll:
+                    self.mapToAll[z] = (r, r)
+                else:
+                    self.mapToAll[z] = (self.mapToAll[z][0], r)
+
+        if holeNumber in self.mapToAll:
+            extents = self.mapToAll[holeNumber]
+            return self.bcAllDS[extents[0]:(extents[1]+1),:]
+        else:
+            return None
+
 
     def getBarcodeTupleForZMW(self, holeNumber):
         """Returns a tuple of (barcodeIdx, score, numberOfPasses)
