@@ -100,21 +100,21 @@ class BarcodeScorer(object):
 
             return (qSeqLeft, qSeqRight)
 
-        adapterRegions = zmw.adapterRegions()
+        adapterRegions = zmw.adapterRegions
         if len(adapterRegions) > self.maxHits:
             adapterRegions = adapterRegions[0:self.maxHits]
         
         seqs = [fromRange(start, end) for (start, end) in adapterRegions]
 
         ## try to grab the first barcode.
-#        if self.scoreFirst:
-#            s = zmw.zmwMetric('HQRegionStartTime')
-#            e = zmw.zmwMetric('HQRegionEndTime')
+        if self.scoreFirst:
+            s = zmw.zmwMetric('HQRegionStartTime')
+            e = zmw.zmwMetric('HQRegionEndTime')
             # s<e => has HQ. 
-#            if s < e and s <= self.startTimeCutoff:
-#                l = self.barcodeLength + self.insertSidePad
-#                l = l if zmw.hqRegion[1] > l else zmw.hqRegion[1]
-#                seqs.insert(0, (zmw.read(0, l).basecalls(), None))
+            if s < e and s <= self.startTimeCutoff:
+                l = self.barcodeLength + self.insertSidePad
+                l = l if zmw.hqRegion[1] > l else zmw.hqRegion[1]
+                seqs.insert(0, (zmw.read(0, l).basecalls(), None))
 
         return seqs
 
