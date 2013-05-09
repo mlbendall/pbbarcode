@@ -37,6 +37,7 @@ import shutil
 import pkg_resources
 import re
 import subprocess
+import random
 from multiprocessing import Pool
 
 import h5py as h5
@@ -326,13 +327,6 @@ def callConsensus():
         for label in bcH5.bcLabels:
             try:
                 zmws = bcH5.getZMWsForBarcode(label)
-
-                if runner.args.subsample != 1:
-                    idxs = n.floor(n.random.uniform(0, zmws.shape[0], 
-                                                    zmws.shape[0]*runner.args.subsample))
-                    idxs = n.array(idxs, dtype = int)
-                    zmws = zmws[idxs,:]
-
                 for row in range(0, zmws.shape[0]):
                     zmw = basH5[zmws[row, 0]]
                     if not label in zmwsForBCs.keys():
@@ -344,6 +338,26 @@ def callConsensus():
 
             except BarcodeIdxException, e:
                 continue
+
+    def ss(e):
+        logging.info("starting with %d zmws" % len(e))
+
+        if runner.args.nZMWs > 0:
+            k = runner.args.nZMWs if runner.args.nZMWs < len(e) else len(e)    
+
+        elif runner.args.subsample < 1:
+            k = int(len(e)*runner.args.subsample)
+        else:
+            k = len(e)
+            
+        i = n.array(random.sample(range(0, len(e)), k), dtype = int) 
+
+        logging.info("subsampled down to: %d" % len(i))
+
+        return list(n.array(e)[i])
+
+    ## now subsample
+    zmwsForBCs = { k:ss(v) for k,v in zmwsForBCs.items() }
 
     def getAvgScore(bcTup):
         return bcTup[1]/bcTup[2]
@@ -487,10 +501,14 @@ def callConsensus():
         regs = [ (a, h5.File(a, 'r')['/PulseData/Regions']) for a in inputFofn ]
         nfofn = []
         for inFof,regTbl in regs:
-            reg   = regTbl[n.in1d(regTbl[:, 0], n.array([ a.holeNumber for a in subreads ])), :]
+            holes = n.in1d(regTbl[:, 0], n.array([ a.holeNumber for a in subreads ]))
+            if any(holes): 
+                reg = regTbl[holes, :]
+            else:
+                reg = n.empty(shape = (0, regTbl.shape[1]), dtype = 'int32')
             fname = "%s/%s.rgn.h5" % (bcdir, os.path.basename(inFof))
             nfile = h5.File(fname, 'w')
-            ndset = nfile.create_dataset('/PulseData/Regions', data = reg)
+            ndset = nfile.create_dataset('/PulseData/Regions', data = reg, maxshape = (None, None))
             copyAttributes(regTbl, ndset)
             nfile.close()
             nfofn.append(fname)
@@ -593,6 +611,8 @@ class Pbbarcode(PBMultiToolRunner):
                               help = "ZMW Filter: exclude ZMW if readScore is less than this value")
         parser_s.add_argument('--subsample', default = 1, type = float,
                               help = "Subsample ZMWs")
+        parser_s.add_argument('--nZMWs', default = -1, type = int,
+                              help = "Take n ZMWs")
 
         parser_s.add_argument('--outDir', default = '.', type = str,
                               help = "Use this directory to output results")

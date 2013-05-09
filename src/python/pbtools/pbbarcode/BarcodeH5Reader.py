@@ -170,13 +170,18 @@ class BarcodeH5Reader(object):
         """Returns a tuple of (barcodeIdx, score, numberOfPasses)
         where barcodeIdx is an index into bcLabels"""
         try:
+            ## XXX: something is not exactly right here w.r.t. the
+            ## number of passes and the average scores.
+
             d = self.holeNumberToBC[holeNumber]
             if self.scoreMode == 'symmetric':
                 return (d[1], d[2], d[0])
+
             elif self.scoreMode == 'asymmetric':
                 (l, h) = (d[1], d[3]) if d[1] < d[3] else (d[3], d[1])
                 idx = ((len(self.barcodes)-1)*l - l*(l-1)/2) + h-l-1
-                return (idx, d[2]+d[4], d[0])
+                return (idx, d[2] + d[4], d[0])
+
             elif self.scoreMode == 'paired':
                 return (d[1]/2, d[2] + d[4], d[0])
         except:
