@@ -122,23 +122,30 @@ class BarcodeScorer(object):
         adapters = self.flankingSeqs(zmw)
         adapterScores = [[]]*len(adapters)
         barcodeScores = n.zeros(len(self.barcodeSeqs))
-        nScored       = 0
+        nScored = 0
 
         for i,adapter in enumerate(adapters):
-            fscores = self.forwardScorer(adapter[0])
-            rscores = self.reverseScorer(adapter[0])
+            fscores  = self.forwardScorer(adapter[0])
+            rscores  = self.reverseScorer(adapter[0])
             ffscores = self.forwardScorer(adapter[1])
             rrscores = self.reverseScorer(adapter[1])
-            adapterScores[i] = n.maximum(fscores + rrscores, 
-                                         rscores + ffscores)
-            nScored += 2 if adapter[0] and adapter[1] else \
+
+            scored = 2 if adapter[0] and adapter[1] else \
                 1 if adapter[0] or adapter[1] else 0
-            
+
+            if scored == 0:
+                adapterScores[i] = barcodeScores
+            else:
+                adapterScores[i] = n.maximum((fscores + rrscores)/scored, 
+                                             (rscores + ffscores)/scored)
+                nScored += 1
+
+        
         # summarize the scores. 
         barcodeScores = reduce(lambda x, y: x + y, adapterScores) if adapterScores \
             else n.zeros(len(self.barcodeSeqs))
         
-        return (zmw.holeNumber, nScored, barcodeScores, adapterScores)
+        return (zmw.holeNumber, len(adapters), barcodeScores, adapterScores)
 
     def scoreZMWs(self, zmws = None):
         if zmws is None:
@@ -168,10 +175,12 @@ class BarcodeScorer(object):
                 # lower score than some alternate F or
                 # R.
                 if o[1] == 1:
-                    p = n.argsort(-o[2])[0]
+                    p = n.argmax(o[2])
+                    s = n.max(o[2])
+
                     # now p can be either F1 or R1, but below, I need
                     # it to be F1 so if it is odd, subtract 1. And we
-                    # need to mod it by 2 because our selection below
+                    # need to divide it by 2 because our selection below
                     # will multiply it up.
                     p = (p if p % 2 == 0 else p - 1)/2
                 else:
@@ -189,8 +198,10 @@ class BarcodeScorer(object):
 
                         results[i] = max(pths)
                     p = n.argmax(results)/2
+                    s = n.max(results)
 
-                return (o[0], o[1], 2*p, o[2][2*p], 2*p + 1, o[2][2*p + 1])
+                #return (o[0], o[1], 2*p, o[2][2*p], 2*p + 1, o[2][2*p + 1])
+                return (o[0], o[1], 2*p, s, 2*p + 1, 0)
 
         else:
             raise Exception("Unsupported scoring mode in BarcodeLabeler.py")
