@@ -276,17 +276,18 @@ def emitFastqs():
     if fasta:
         writer = FastaWriter
         def record(n, s, qv):
-            FastaRecord(n, s)
+            return FastaRecord(n, s)
     else:
         writer = FastqWriter
         record = FastqRecord
-
+    
+    l = 'a' if runner.args.fasta else 'q'
     for k in outFiles.keys():
-        with writer("%s/%s.fastq" % (runner.args.outDir, k)) as w:
+        with writer("%s/%s.fast%s" % (runner.args.outDir, k, l)) as w:
             for e in outFiles[k]:
                 r = record(e.name,
-                           e.sequence[runner.args.trim:-runner.args.trim],
-                           e.quality[runner.args.trim:-runner.args.trim])
+                           e.sequence[runner.args.trim:(len(e.sequence)-runner.args.trim)],
+                           e.quality[runner.args.trim:(len(e.sequence)-runner.args.trim)])
                 if r:
                     w.writeRecord(r)
 
