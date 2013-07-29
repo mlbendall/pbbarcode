@@ -10,23 +10,18 @@ Introduction
 This document describes the interface and input/output formats of the
 ``pbbarcode`` package command line tools. The package provides
 utilities for annotating individual ZMWs directly from a bas.h5 file,
-emitting fast[a|q] files for each barcode, and labeling alignments
-stored in a cmp.h5 file. 
+emitting fast[a|q] files for each barcode, labeling alignments stored
+in a cmp.h5 file, and calling consensus on small amplicon sequencing
+runs (requires pbdagcon)
 
-At the moment, three analysis modes are supported. The ``symmetric``
+At the moment, two analysis modes are supported. The ``symmetric``
 mode supports barcode designs with two identical barcodes on both
 sides of a SMRTbell, e.g., for barcodes (A, B), molecules are labeled
-as A--A or B--B. The ``asymmetric`` mode supports barcode designs with
-different barcodes on each side of a molecule with no constraints on
-which barcodes must appear together, e.g., in the case of three
-barcodes: (A,B,C), the following barcode sets are checked, A--B, A--C,
-and B--C. There is no orientation, hence there is no difference
-between A--B and B--A; A--B is arbitrarily chosen because A appears
-before B in the barcode list. Finally, with many barcode sample
-preparations, the two barcodes on each side of the molecule are
-different, but neither barcode appears without its mate. The minimum
-example is given with the following barcodes: (ALeft, ARight, BLeft,
-BRight), where the following barcode sets are checked: ALeft--ARight,
+as A--A or B--B. The ``paired`` mode supports designs with two
+distinct barcodes on each side of the molecule which are different,
+but neither barcode appears without its mate. The minimum example is
+given with the following barcodes: (ALeft, ARight, BLeft, BRight),
+where the following barcode sets are checked: ALeft--ARight,
 BLeft--BRight.
 
 It is important to highlight that barcode fasta files specify a list
@@ -62,7 +57,7 @@ labelZMWs
 |                                [--outFofn OUTFOFN]  
 |                                [--adapterSidePad ADAPTERSIDEPAD] 
 |                                [--insertSidePad INSERTSIDEPAD] 
-|                                [--scoreMode {symmetric,paired,asymmetric}]
+|                                [--scoreMode {symmetric,paired}]
 |            barcode.fasta input.fofn
 
 The ``labelZMWs`` command takes an input.fofn representing a set of
@@ -105,16 +100,19 @@ The ``emitFastqs`` command takes as input both an input.fofn for the
 bas.h5 files as well as a barcode.fofn from a call to labelZMWs. The
 optional parameter ``outDir`` dictates where the files will be written
 to. For each detected barcode, a fast[a|q] file will be emitted with
-all of the reads for that barcode. This could be a large number of
-files depending on the dataset and ``scoreMode`` used. The ``trim``
-parameter dictates how much of the read should be trimmed off. The
-default parameter for ``trim`` is the length of the barcode (which is
-stored in the barcode hdf5 files). At the moment, all barcodes in the
-barcode fasta file must be the same length, therefore only a constant
-trim value is supported. In practice, one can aggressively trim in
-order to ensure that extra bases aren't left on the ends of
-reads. Finally, the ``subreads`` parameter dictates whether subreads
-or CCS reads should be returned with the default being CCS reads.
+all of the reads for that barcode. The ``trim`` parameter dictates how
+much of the read should be trimmed off. The default parameter for
+``trim`` is the length of the barcode (which is stored in the barcode
+hdf5 files). At the moment, all barcodes in the barcode fasta file
+must be the same length, therefore only a constant trim value is
+supported. In practice, one can aggressively trim in order to ensure
+that extra bases aren't left on the ends of reads. Finally, the
+``subreads`` parameter dictates whether subreads or CCS reads should
+be returned with the default being CCS reads. The ``subreads``
+parameter is only inspected if the input.fofn contains both CCS and
+subread data, if the input.fofn contains only subread or CCS data then
+that is returned irrespective of the state of the the ``subreads``
+parameter.
 
 Dependencies
 ````````````
@@ -157,28 +155,14 @@ consistent with the cmp.h5 file format. Specifically, a new group:
 |   ID   (nBarcodeLabels + 1, 1)[32-bit integer] 
 |   Name (nBarcodeLabels + 1, 1)[variable length string]
 
-The most important thing to understand is that ``nBarcodeLabels`` is
-not necessarilly equal to the number of barcodes in
-barcode.fasta. Barcode labels are combined according to the type of
-scoring mode used. For instance, in the ``paired`` alignment mode,
-each pair becomes a ``Name``, e.g., ALeft--ARight are formed from the
-two barcodes ALeft and ARight from the barcode.fasta file. In the case
-of the ``asymmetric`` scoring mode the number of barcodes can be quite
-large and is given by: ``(|barcode.fasta|*(|barcode.fasta| -
-1)/2)``. Finally, and most simply for the ``symmetric`` mode, the
-number of barcodes is given by ``|barcode.fasta| + 1``, where the
-additional barcode of '--' represents the null barcode, i.e., those
-alignments where no barcode was detected. This generally occurs
-because no adapters were found.
-
 In addition to the /BarcodeInfo/ group, the key dataset which assigns
 alignments to barcodes is located at:
 
 /AlnInfo/Barcode (nAlignments, 3)[32-bit integer] with the following
 colums:
 
-``index,score,count``
+``index,count,bestIndex,bestScore,secondBestIndex,secondBestScore``
 
 Here index refers to the index into the ``Name`` vector, score
 corresponds to the sum of the scores for the barcodes, and finally,
-count refers to the number of adapters found in the molecule. 
+count refers to the number of adapters found in the molecule.
