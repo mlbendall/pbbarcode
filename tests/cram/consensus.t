@@ -4,5 +4,5 @@
   $ export BARCODE_FASTA=$TESTDIR/../../etc/barcode.fasta
   $ echo $INBH51 > bas.fofn
   $ echo $INBH52 >> bas.fofn
-  $ pbbarcode.py labelZMWs $BARCODE_FASTA bas.fofn
-  $ pbbarcode.py consensus barcode.fofn bas.fofn
+  $ pbbarcode.py labelZmws $BARCODE_FASTA bas.fofn
+  $ pbbarcode.py consensus bas.fofn barcode.fofn

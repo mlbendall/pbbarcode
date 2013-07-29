@@ -4,10 +4,10 @@
   $ export BARCODE_FASTA=$TESTDIR/../../etc/barcode.fasta
   $ echo $INBH51 > bas.fofn
   $ echo $INBH52 >> bas.fofn
-  $ pbbarcode.py labelZMWs $BARCODE_FASTA bas.fofn
-  $ pbbarcode.py labelZMWs --scoreMode paired $BARCODE_FASTA bas.fofn
-  $ pbbarcode.py labelZMWs --scoreMode paired --scoreFirst $BARCODE_FASTA bas.fofn
-  $ pbbarcode.py labelZMWs --scoreMode paired --scoreFirst --adapterSidePad 0 --insertSidePad 0 $BARCODE_FASTA bas.fofn
+  $ pbbarcode.py labelZmws $BARCODE_FASTA bas.fofn
+  $ pbbarcode.py labelZmws --scoreMode paired $BARCODE_FASTA bas.fofn
+  $ pbbarcode.py labelZmws --scoreMode paired --scoreFirst $BARCODE_FASTA bas.fofn
+  $ pbbarcode.py labelZmws --scoreMode paired --scoreFirst --adapterSidePad 0 --insertSidePad 0 $BARCODE_FASTA bas.fofn
   $ pbbarcode.py emitFastqs --fasta bas.fofn barcode.fofn
   $ pbbarcode.py emitFastqs --trim 20 bas.fofn barcode.fofn
   $ pbbarcode.py emitFastqs --subreads --trim 20 bas.fofn barcode.fofn
