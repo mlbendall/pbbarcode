@@ -63,7 +63,7 @@ BC_INFO_ID     = "BarcodeInfo/ID"
 
 SCORE_MODES    = ['symmetric', 'paired']
 
-BAS_PLS_REGEX = r'\.ba[x|s]\.h5$|\.pl[x|s]\.h5$'
+BAS_PLS_REGEX = r'\.ba[x|s]\.h5$|\.pl[x|s]\.h5$|\.ccs\.h5$'
 BARCODE_EXT   = '.bc.h5'
 BC_REGEX      = r'\.bc\.h5'
 
@@ -195,23 +195,38 @@ def setupFofns():
 
 def filterZmws(zmwsForBCs):
     def getHQStart(zmw):
-        return zmw.zmwMetric('HQRegionStartTime')
+        try:
+            return zmw.zmwMetric('HQRegionStartTime')
+        except:
+            # XXX : CCS this isn't correct
+            return 0
+        
     def getReadScore(zmw):
         return zmw.zmwMetric("ReadScore")
 
+    def molLenGuess(zmw):
+        if zmw.subreads:
+            return max(map(len, zmw.subreads))
+        else:
+            return len(zmw.ccsRead) if zmw.ccsRead else 0
+        
+
     def zmwFilterFx(tup):
         zmw, lZmw = tup
-        if not len(zmw.subreads):
+
+        mlGuess = molLenGuess(zmw)
+        if not mlGuess:
             return False
+
         avgScore    = lZmw.averageScore
         numScored   = lZmw.nScored
         scoreRatio  = lZmw.scoreRatio
         hqStart     = getHQStart(zmw)
         readScore   = getReadScore(zmw)
-        rlens       = map(len, zmw.subreads)
+
 
         ## XXX : need to detect the chimeras
-        if max(rlens) < runner.args.minMaxInsertLength or \
+        if mlGuess < runner.args.minMaxInsertLength or \
                 hqStart > runner.args.hqStartTime or \
                 readScore < runner.args.minReadScore or \
                 avgScore < runner.args.minAvgBarcodeScore or \
@@ -224,17 +239,26 @@ def filterZmws(zmwsForBCs):
     return { k:filter(zmwFilterFx, v) for k,v in zmwsForBCs.items() }
 
 def getFastqs():
-    outFiles = {} 
     zmwsByBarcode = getZmwsForBarcodes()
+    logging.debug("Pre-filter: Average number of ZMWs per barcode: %d" % 
+                  n.mean([len(zmwsByBarcode[k]) for k in zmwsByBarcode.keys()]))
     zmwsByBarcode = filterZmws(zmwsByBarcode) 
+    logging.debug("Post-filter: Average number of ZMWs per barcode: %d" % 
+                  n.mean([len(zmwsByBarcode[k]) for k in zmwsByBarcode.keys()]))
     
     def getReadData(zmws):
         def makeRecord(zmwTup):
             zmw, _ = zmwTup
-            if runner.args.subreads:
+            if zmw.baxH5.hasRawBasecalls and zmw.baxH5.hasConsensusBasecalls:
+                if runner.args.subreads:
+                    reads = zmw.subreads
+                else:
+                    reads = [zmw.ccsRead]
+            elif zmw.baxH5.hasRawBasecalls:
                 reads = zmw.subreads
             else:
                 reads = [zmw.ccsRead]
+
             return [FastqRecord(read.readName,
                                 read.basecalls(),
                                 read.QualityValue()) for read in reads if read]
@@ -544,19 +568,23 @@ class Pbbarcode(PBMultiToolRunner):
         parser_s.add_argument('--outDir', metavar = 'output.dir',
                               help = 'output directory to write fastq files',
                               default = os.getcwd())
-        parser_s.add_argument('--trim', help = 'trim off barcodes and any excess constant sequence',
-                              default = 20, type = int)
+
+        ## XXX: This only works if the file has both, otherwise
+        ## whatever you passed in is what you get back
         parser_s.add_argument('--subreads', help = ('whether to produce fastq files for the subreads;' +
                                                     'the default is to use the CCS reads.'),
                               action = 'store_true',
                               default = False)
+
+        parser_s.add_argument('--trim', help = 'trim off barcodes and any excess constant sequence',
+                              default = 20, type = int)
         parser_s.add_argument('--fasta', help = ('whether the files produced should be FASTA files as' +
                                                  'opposed to FASTQ'),
                               action = 'store_true',
                               default = False)
         addFilteringOpts(parser_s)
         parser_s.add_argument('inputFofn', metavar = 'input.fofn',
-                              help = 'input bas.h5 fofn file')
+                              help = 'input base or CCS fofn file')
         parser_s.add_argument('barcodeFofn', metavar = 'barcode.fofn',
                               help = 'input barcode.h5 fofn file')
 
