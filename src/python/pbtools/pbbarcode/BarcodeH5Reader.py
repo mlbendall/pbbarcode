@@ -74,7 +74,7 @@ class LabeledZmw(object):
         return self._bestScore
     @property
     def averageScore(self):
-        return self.bestScore/self.nScored
+        return 0 if self.nScored <= 0 else self.bestScore/self.nScored
     @property
     def scoreRatio(self):
         return 1 if self.secondBestScore == 0 or self.bestScore == 0 else \
@@ -93,8 +93,6 @@ class LabeledZmw(object):
         return "(holeNumber = %d, nScored = %d, bestIdx = %d, bestScore = %d, averageScore = %d)" % \
             (self.holeNumber, self.nScored, self.bestIdx, self.bestScore, self.averageScore)
 
-class BarcodeIdxException(Exception):
-    pass
 
 def writeBarcodeH5(labeledZmws, labeler, outFile, 
                    writeExtendedInfo = False):

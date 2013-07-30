@@ -63,7 +63,7 @@ BC_INFO_ID     = "BarcodeInfo/ID"
 
 SCORE_MODES    = ['symmetric', 'paired']
 
-BAS_PLS_REGEX = r'\.ba[x|s]\.h5$|\.pl[x|s]\.h5$|\.ccs\.h5$'
+BAS_PLS_REGEX = r'\.ba[x|s]\.h5$|\.pl[x|s]\.h5$|\.cc[x|s]\.h5$'
 BARCODE_EXT   = '.bc.h5'
 BC_REGEX      = r'\.bc\.h5'
 
@@ -224,7 +224,6 @@ def filterZmws(zmwsForBCs):
         hqStart     = getHQStart(zmw)
         readScore   = getReadScore(zmw)
 
-
         ## XXX : need to detect the chimeras
         if mlGuess < runner.args.minMaxInsertLength or \
                 hqStart > runner.args.hqStartTime or \
@@ -238,31 +237,32 @@ def filterZmws(zmwsForBCs):
 
     return { k:filter(zmwFilterFx, v) for k,v in zmwsForBCs.items() }
 
+def getFastqRecords(zmw):
+    if zmw.baxH5.hasRawBasecalls and zmw.baxH5.hasConsensusBasecalls:
+        if runner.args.subreads:
+            reads = zmw.subreads
+        else:
+            reads = [zmw.ccsRead]
+    elif zmw.baxH5.hasRawBasecalls:
+        reads = zmw.subreads
+    else:
+        reads = [zmw.ccsRead]
+
+    return [FastqRecord(read.readName,
+                        read.basecalls(),
+                        read.QualityValue()) for read in reads if read]
+
 def getFastqs():
     zmwsByBarcode = getZmwsForBarcodes()
     logging.debug("Pre-filter: Average number of ZMWs per barcode: %d" % 
                   n.mean([len(zmwsByBarcode[k]) for k in zmwsByBarcode.keys()]))
+
     zmwsByBarcode = filterZmws(zmwsByBarcode) 
     logging.debug("Post-filter: Average number of ZMWs per barcode: %d" % 
                   n.mean([len(zmwsByBarcode[k]) for k in zmwsByBarcode.keys()]))
     
     def getReadData(zmws):
-        def makeRecord(zmwTup):
-            zmw, _ = zmwTup
-            if zmw.baxH5.hasRawBasecalls and zmw.baxH5.hasConsensusBasecalls:
-                if runner.args.subreads:
-                    reads = zmw.subreads
-                else:
-                    reads = [zmw.ccsRead]
-            elif zmw.baxH5.hasRawBasecalls:
-                reads = zmw.subreads
-            else:
-                reads = [zmw.ccsRead]
-
-            return [FastqRecord(read.readName,
-                                read.basecalls(),
-                                read.QualityValue()) for read in reads if read]
-        recs = [makeRecord(zmw) for zmw in zmws]
+        recs = [getFastqRecords(zmw) for zmw,_ in zmws]
         recs = filter(lambda x : x, recs)
         return [elt for sublst in recs for elt in sublst]
 
@@ -272,6 +272,9 @@ def emitFastqs():
     outFiles = getFastqs()
     outDir   = runner.args.outDir
     fasta    = runner.args.fasta
+
+    if runner.args.unlabeledZmws:
+        outFiles['UNLABLED'] = getUnlabeledZmws()
 
     if not os.path.exists(runner.args.outDir):
         os.makedirs(runner.args.outDir)
@@ -295,7 +298,21 @@ def emitFastqs():
                     if r:
                         w.writeRecord(r)
 
-                       
+def getUnlabeledZmws():
+    inputFofn, barcodeFofn = setupFofns()
+    unlabeledZmws = []
+
+    for basFile, barcodeFile in zip(inputFofn, barcodeFofn):
+        basH5 = BasH5Reader(basFile)
+        bcH5  = BarcodeH5Reader(barcodeFile)
+        sdiff = basH5.sequencingZmws[~n.in1d(basH5.sequencingZmws,  
+                                             bcH5.labeledZmws.keys())]
+        for hn in sdiff:
+            unlabeledZmws.append(basH5[hn])
+
+    return reduce(lambda x,y : x+y, [getFastqRecords(unlabeledZmw) for 
+                                     unlabeledZmw in unlabeledZmws])
+
 def getZmwsForBarcodes():
     """dictionary of pbcore.io.Zmw and LabeledZmw indexed by barcode
     label"""
@@ -313,6 +330,7 @@ def getZmwsForBarcodes():
                 if not label in zmwsForBCs.keys():
                     zmwsForBCs[label] = []
                 zmwsForBCs[label].append((zmw, lZmw))
+
     return zmwsForBCs
 
 def gconFunc(tp):
@@ -573,6 +591,10 @@ class Pbbarcode(PBMultiToolRunner):
         ## whatever you passed in is what you get back
         parser_s.add_argument('--subreads', help = ('whether to produce fastq files for the subreads;' +
                                                     'the default is to use the CCS reads.'),
+                              action = 'store_true',
+                              default = False)
+        parser_s.add_argument('--unlabeledZmws', help = ('whether to emit a fastq file for the unlabeled ZMWs.' +
+                                                         'These are the ZMWs where no adapters are found typically'),
                               action = 'store_true',
                               default = False)
 
