@@ -47,11 +47,11 @@ import numpy as n
 from pbcore.util.ToolRunner import PBMultiToolRunner
 from pbcore.io.BasH5Reader import *
 from pbcore.io.CmpH5Reader import *
-from pbtools.pbbarcode.BarcodeLabeler import *
-from pbtools.pbbarcode.BarcodeH5Reader import *
+from pbcore.io.BarcodeH5Reader import *
 from pbcore.io import FastaReader, FastqWriter, FastqRecord, \
     FastaWriter, FastaRecord
 
+from pbtools.pbbarcode.BarcodeLabeler import *
 from pbtools.pbh5tools.CmpH5Utils import copyAttributes
 
 __version__ = ".4"
@@ -75,7 +75,7 @@ def makeBarcodeH5FromBasH5(basH5):
                             scoreMode = runner.args.scoreMode, 
                             maxHits = runner.args.maxAdapters,
                             scoreFirst = runner.args.scoreFirst, 
-                            startTimeCutoff = 1) # 1 second if you are going to score the first. 
+                            startTimeCutoff = runner.args.startTimeCutoff)
     if runner.args.nZmws < 0:
         zmws = basH5.sequencingZmws
     else:
@@ -118,23 +118,15 @@ def makeBarcodeFofnFromBasFofn():
 
 def labelAlignments():
     logging.info("Labeling alignments using: %s" % runner.args.inputFofn)
-
-    def movieBasePath(bcFile):
-        r = os.path.basename(bcFile).replace('.bc.h5', '')
-        return '/'.join((os.path.dirname(bcFile), re.sub(r'\.[1-9]$', '', r)))
-
-    barcodeFofn = open(runner.args.inputFofn).read().splitlines()
-    movieNames  = n.unique(map(movieBasePath, barcodeFofn))
-    movieMap    = {os.path.basename(movie):create(movie) for movie in movieNames}
-
+    bcFofn = BarcodeH5Fofn(runner.args.inputFofn)
+    
     with CmpH5Reader(runner.args.cmpH5) as cmpH5:
         bcDS = n.zeros((len(cmpH5), 5), dtype = "int32")
 
         for (i, aln) in enumerate(cmpH5):
-            bcReader = movieMap[aln.movieInfo.Name]
+            bcReader = bcFofn.readerForMovie(aln.movieInfo.Name)
             try:
                 lZmw = bcReader.labeledZmwFromHoleNumber(aln.HoleNumber)
-
                 if lZmw.nScored < runner.args.minNumBarcodes or \
                         lZmw.averageScore < runner.args.minAvgBarcodeScore or \
                         lZmw.scoreRatio < runner.args.minScoreRatio:
@@ -161,8 +153,7 @@ def labelAlignments():
 
     # we use the first one to get the labels, if somehow they
     # don't have all of the same stuff that will be an issue.
-    bcReader = movieMap[movieMap.keys()[0]]
-    bcLabels = n.concatenate((bcReader.barcodeLabels, n.array([BARCODE_DELIMITER]))) 
+    bcLabels = n.concatenate((bcFofn.barcodeLabels, n.array([BARCODE_DELIMITER]))) 
     H5.create_dataset(BC_INFO_ID, data = n.array(range(0, len(bcLabels))), 
                       dtype = 'int32')
     H5.create_dataset(BC_INFO_NAME, data = bcLabels, dtype = h5.new_vlen(str))
@@ -171,9 +162,8 @@ def labelAlignments():
     bcDS = H5.create_dataset(BC_ALN_INFO_DS, data = bcDS, dtype = 'int32')
     bcDS.attrs['ColumnNames'] = n.array(['count', 'index1', 'score1', 'index2', 
                                          'score2'])
-    bcDS.attrs['BarcodeMode'] = bcReader.scoreMode
+    bcDS.attrs['BarcodeMode'] = bcFofn.scoreMode
     H5.close()
-
 
 def setupFofns():
     inputFofn = n.array(open(runner.args.inputFofn).read().splitlines())
@@ -198,7 +188,8 @@ def filterZmws(zmwsForBCs):
         try:
             return zmw.zmwMetric('HQRegionStartTime')
         except:
-            # XXX : CCS this isn't correct
+            # XXX : CCS this isn't correct - but I don't have the
+            # metrics.
             return 0
         
     def getReadScore(zmw):
@@ -533,6 +524,8 @@ class Pbbarcode(PBMultiToolRunner):
                               help = 'Only score the first maxAdapters')
         parser_m.add_argument('--scoreFirst', action = 'store_true', default = False,
                               help = 'Whether to try to score the leftmost barcode in a trace.')
+        parser_m.add_argument('--startTimeCutoff', help = 'Reads must start before this value in order to be included' + 
+                              ' when scoreFirst is set.', type = float, default = 10.0)
         parser_m.add_argument('--nZmws', type = int, default = -1, help = 'Use the first n ZMWs for testing')
         parser_m.add_argument('--nProcs', type = int, default = 8, help = 'How many processes to use')
         parser_m.add_argument('--saveExtendedInfo', action = 'store_true', default = False,\

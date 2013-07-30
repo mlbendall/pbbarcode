@@ -33,7 +33,7 @@ from pbcore.io.FastaIO import *
 import pbtools.pbbarcode.SWaligner as Aligner
 import numpy as n
 
-from pbtools.pbbarcode.BarcodeH5Reader import LabeledZmw, \
+from pbcore.io.BarcodeH5Reader import LabeledZmw, \
     BARCODE_DELIMITER
 
 __RC_MAP__ = dict(zip('ACGTacgt-N','TGCAtgca-N'))
@@ -136,25 +136,20 @@ class BarcodeScorer(object):
         # *and* the start time is less than the threshold. 
         scoredFirst = False
         if self.scoreFirst and not len(seqs):
-            ## XXX: bug in pbcore which is throwing an exception here
-            ## other than the one I'm catching.:
-            try:
-                s = zmw.zmwMetric('HQRegionStartTime')
-                e = zmw.zmwMetric('HQRegionEndTime')
-                # s<e => has HQ. 
-                if s < e and s <= self.startTimeCutoff:
-                    l = self.barcodeLength + self.insertSidePad
-                    l = l if zmw.hqRegion[1] > l else zmw.hqRegion[1]
-                    try:
-                        bc = zmw.read(0, l).basecalls()
-                        if len(bc) >= self.barcodeLength:
-                            seqs.insert(0, (bc, None))
-                            scoredFirst = True
-                    except IndexError:
-                        pass
-            except:
-                pass
-
+            s = zmw.zmwMetric('HQRegionStartTime')
+            e = zmw.zmwMetric('HQRegionEndTime')
+            # s<e => has HQ. 
+            if s < e and s <= self.startTimeCutoff:
+                l = self.barcodeLength + self.insertSidePad
+                l = l if zmw.hqRegion[1] > l else zmw.hqRegion[1]
+                try:
+                    bc = zmw.read(0, l).basecalls()
+                    if len(bc) >= self.barcodeLength:
+                        seqs.insert(0, (bc, None))
+                        scoredFirst = True
+                except IndexError:
+                    pass
+        
         return (seqs, scoredFirst)
 
     def labelZmws(self, holeNumbers):
@@ -226,5 +221,3 @@ class BarcodeScorer(object):
 
         scored = [scoreZmw(self.basH5[zmw]) for zmw in holeNumbers] 
         return [choose(scoreTup) for scoreTup in scored if scoreTup[1]]
-
-
