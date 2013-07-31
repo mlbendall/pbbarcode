@@ -67,6 +67,10 @@ BAS_PLS_REGEX = r'\.ba[x|s]\.h5$|\.pl[x|s]\.h5$|\.cc[x|s]\.h5$'
 BARCODE_EXT   = '.bc.h5'
 BC_REGEX      = r'\.bc\.h5'
 
+def movieNameFromFile(fn):
+    return re.sub('|'.join((BC_REGEX, BAS_PLS_REGEX)) , '', 
+                  os.path.basename(fn))
+
 def makeBarcodeH5FromBasH5(basH5):
     """The workhorse function for creating a barcode H5 file from a
     base H5 file."""
@@ -165,31 +169,37 @@ def labelAlignments():
     bcDS.attrs['BarcodeMode'] = bcFofn.scoreMode
     H5.close()
 
-def setupFofns():
-    inputFofn = n.array(open(runner.args.inputFofn).read().splitlines())
-    barcodeFofn = n.array(open(runner.args.barcodeFofn).read().splitlines())
+def zipFofns(*inFofns):
+    """Take inputFofns and return n tuples of length len(inFofns)
+    where n is the number of entries in each FOFN."""
+    def readAndSort(inFile):
+        lines = n.array(open(inFile).read().splitlines())
+        lines = lines[n.array(n.argsort([movieNameFromFile(fofnLine) for fofnLine in 
+                                         lines]))]
+        return lines
 
-    def movieNameFromFile(fn):
-        return re.sub('|'.join((BC_REGEX, BAS_PLS_REGEX)) , '', 
-                      os.path.basename(fn))
-    # sort them.
-    inputFofn = list(inputFofn[n.array(n.argsort([movieNameFromFile(a) for \
-                                                      a in inputFofn]))])
-    barcodeFofn = list(barcodeFofn[n.array(n.argsort([movieNameFromFile(a) for \
-                                                          a in barcodeFofn]))])
-    if len(inputFofn) != len(barcodeFofn) or \
-            any([ movieNameFromFile(a) != movieNameFromFile(b) \
-                      for a,b in zip(inputFofn, barcodeFofn)]):
-        raise Exception("input.fofn and barcode.fofn do not match.")
-    return (inputFofn, barcodeFofn)
+    sortedFofns = [readAndSort(inFofn) for inFofn in inFofns]
+    l = map(len, sortedFofns)
+    if len(n.unique(l)) != 1:
+        raise Exception("Fofns don't match, unequal number of inputs.")
+    else:
+        for i in xrange(0, n.unique(l)):
+            if len(n.unique([movieNameFromFile(sortedFofn[i]) for sortedFofn in sortedFofns])) != 1:
+                raise Exception("Fofn elements don't match, movies differ.")
+    
+    # need to un-arrayify these guys
+    return zip(*map(list, sortedFofns))
 
 def filterZmws(zmwsForBCs):
+    """Apply various filterings passed by the user. There are somewhat
+    different semantics for CCS filtering and subread filtering in
+    terms of the raw primary metrics available, e.g.,
+    HQRegionStartTime is unavailable for the CCS data and somewhat
+    irrelevant."""
     def getHQStart(zmw):
         try:
             return zmw.zmwMetric('HQRegionStartTime')
         except:
-            # XXX : CCS this isn't correct - but I don't have the
-            # metrics.
             return 0
         
     def getReadScore(zmw):
@@ -200,7 +210,6 @@ def filterZmws(zmwsForBCs):
             return max(map(len, zmw.subreads))
         else:
             return len(zmw.ccsRead) if zmw.ccsRead else 0
-        
 
     def zmwFilterFx(tup):
         zmw, lZmw = tup
@@ -230,6 +239,7 @@ def filterZmws(zmwsForBCs):
 
 def getFastqRecords(zmw):
     if zmw.baxH5.hasRawBasecalls and zmw.baxH5.hasConsensusBasecalls:
+        # Only examine this parameter when passed both.
         if runner.args.subreads:
             reads = zmw.subreads
         else:
@@ -290,10 +300,11 @@ def emitFastqs():
                         w.writeRecord(r)
 
 def getUnlabeledZmws():
-    inputFofn, barcodeFofn = setupFofns()
+    """Return FASTQ records for ZMWs which do not have a barcode label"""
     unlabeledZmws = []
 
-    for basFile, barcodeFile in zip(inputFofn, barcodeFofn):
+    for basFile, barcodeFile in zipFofns(runner.args.inputFofn, 
+                                         runner.args.barcodeFofn):
         basH5 = BasH5Reader(basFile)
         bcH5  = BarcodeH5Reader(barcodeFile)
         sdiff = basH5.sequencingZmws[~n.in1d(basH5.sequencingZmws,  
@@ -307,11 +318,10 @@ def getUnlabeledZmws():
 def getZmwsForBarcodes():
     """dictionary of pbcore.io.Zmw and LabeledZmw indexed by barcode
     label"""
-    inputFofn, barcodeFofn = setupFofns()
     zmwsForBCs = {} 
 
-    for basFile, barcodeFile in zip(inputFofn, barcodeFofn):
-        logging.debug("Processing: %s %s" % (basFile, barcodeFile))
+    for basFile, barcodeFile in zipFofns(runner.args.inputFofn, 
+                                         runner.args.barcodeFofn):
         basH5 = BasH5Reader(basFile)
         bcH5  = BarcodeH5Reader(barcodeFile)
         for label in bcH5.barcodeLabels:
@@ -410,19 +420,14 @@ def callConsensus():
             m = n.argmax([n.mean(x.QualityValue()) * len(x) for x in ccsDta])
             seedRead = [ccsDta[m]]
         else:
-            logging.info("No CCS data found for %d" % zmw.holeNumber) 
-            try:
-                seedRead = getSeedRead(zmwsForBC)
-            except BarcodeIdxException:
-                seedRead = None
+            seedRead = getSeedRead(zmwsForBC)
         
         return (seedRead, subreads)
-
-    inputFofn, barcodeFofn = setupFofns()
     
-    # hash of zmws and labeling information by barcode
+    
+    # zmw
     zmwsForBCs = getZmwsForBarcodes()
-    
+
     # subsample
     zmwsForBCs = {k:subsampleReads(v) for k,v in zmwsForBCs.items()}
 
@@ -434,6 +439,8 @@ def callConsensus():
     
     logging.info("filtered average zmws per barcode: %g" % 
                  n.round(n.mean(map(len, zmwsForBCs.values()))))
+
+    # if CCS data is available, set that up.
 
 
     ## now choose the best subread to seed the assembly
@@ -459,11 +466,12 @@ def callConsensus():
         with FastaWriter("%s/subreads.fasta" % bcdir) as w:
             for r in reads[1]:
                 w.writeRecord(FastaRecord(r.readName, r.basecalls()))
-
+                
                 subreads = reads[1]
         
         ## now, make region files for an eventual blasr alignment
-        regs = [ (a, h5.File(a, 'r')['/PulseData/Regions']) for a in inputFofn ]
+        regs = [(a, h5.File(a, 'r')['/PulseData/Regions']) for a in 
+                open(runner.args.inputFofn, 'r').read().splitlines()]
         nfofn = []
         for inFof,regTbl in regs:
             holes = n.in1d(regTbl[:, 0], n.array([ a.holeNumber for a in subreads ]))
@@ -580,10 +588,10 @@ class Pbbarcode(PBMultiToolRunner):
                               help = 'output directory to write fastq files',
                               default = os.getcwd())
 
-        ## XXX: This only works if the file has both, otherwise
-        ## whatever you passed in is what you get back
         parser_s.add_argument('--subreads', help = ('whether to produce fastq files for the subreads;' +
-                                                    'the default is to use the CCS reads.'),
+                                                    'the default is to use the CCS reads. This option only' + 
+                                                    'applies when input.fofn has both consensus and raw reads,' + 
+                                                    'otherwise the read type from input.fofn will be returned.'),
                               action = 'store_true',
                               default = False)
         parser_s.add_argument('--unlabeledZmws', help = ('whether to emit a fastq file for the unlabeled ZMWs.' +
@@ -614,6 +622,8 @@ class Pbbarcode(PBMultiToolRunner):
         parser_s.add_argument('--outDir', default = '.', type = str,
                               help = "Use this directory to output results")
         parser_s.add_argument('--keepTmpDir', action = 'store_true', default = False)
+        parser_s.add_argument('--ccsFofn', default = '', type = str,
+                              help = 'Obtain CCS data from ccsFofn instead of input.fofn')
         addFilteringOpts(parser_s)
         parser_s.add_argument('inputFofn', metavar = 'input.fofn',
                               help = 'input bas.h5 fofn file')
