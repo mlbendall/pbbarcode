@@ -207,7 +207,7 @@ def filterZmws(zmwsForBCs):
 
     def molLenGuess(zmw):
         if zmw.baxH5.hasRawBasecalls:
-            return max(map(len, zmw.subreads))
+            return max(map(len, zmw.subreads)) if zmw.subreads else 0
         else:
             return len(zmw.ccsRead) if zmw.ccsRead else 0
 
@@ -224,7 +224,7 @@ def filterZmws(zmwsForBCs):
         hqStart     = getHQStart(zmw)
         readScore   = getReadScore(zmw)
 
-        ## XXX : need to detect the chimeras
+        ## XXX : still need to detect the chimeras
         if mlGuess < runner.args.minMaxInsertLength or \
                 hqStart > runner.args.hqStartTime or \
                 readScore < runner.args.minReadScore or \
@@ -254,11 +254,12 @@ def getFastqRecords(zmw, lZmw = None):
         else:
             reads = [zmw.ccsRead]
     elif zmw.baxH5.hasRawBasecalls:
+        if runner.args.subreads:
+            warnOnce("`subreads` argument is ignored when using >= 2.1 bas.h5 data as input.")
         reads = zmw.subreads
     else:
         if runner.args.subreads:
-            warnOnce("`subreads` argument is ignored when using CCS data as input.")
-
+            warnOnce("`subreads` argument is ignored when using >= 2.1 ccs.h5 data as input.")
         reads = [zmw.ccsRead]
 
     extra = (" %g %g" % (round(zmw.zmwMetric("ReadScore"), 2), 
