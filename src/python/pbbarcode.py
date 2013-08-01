@@ -206,7 +206,7 @@ def filterZmws(zmwsForBCs):
         return zmw.zmwMetric("ReadScore")
 
     def molLenGuess(zmw):
-        if zmw.subreads:
+        if zmw.baxH5.hasRawBasecalls:
             return max(map(len, zmw.subreads))
         else:
             return len(zmw.ccsRead) if zmw.ccsRead else 0
@@ -237,7 +237,16 @@ def filterZmws(zmwsForBCs):
 
     return { k:filter(zmwFilterFx, v) for k,v in zmwsForBCs.items() }
 
-def getFastqRecords(zmw):
+def _warnOnce():
+    var = []
+    def warnOnce(msg):
+        if not var:
+            logging.warn(msg)
+        var.append(1)
+    return warnOnce
+warnOnce = _warnOnce()
+
+def getFastqRecords(zmw, lZmw = None):
     if zmw.baxH5.hasRawBasecalls and zmw.baxH5.hasConsensusBasecalls:
         # Only examine this parameter when passed both.
         if runner.args.subreads:
@@ -247,9 +256,15 @@ def getFastqRecords(zmw):
     elif zmw.baxH5.hasRawBasecalls:
         reads = zmw.subreads
     else:
+        if runner.args.subreads:
+            warnOnce("`subreads` argument is ignored when using CCS data as input.")
+
         reads = [zmw.ccsRead]
 
-    return [FastqRecord(read.readName,
+    extra = (" %g %g" % (round(zmw.zmwMetric("ReadScore"), 2), 
+                         round(lZmw.averageScore, 2))) if lZmw else ""
+    
+    return [FastqRecord(read.readName + extra,
                         read.basecalls(),
                         read.QualityValue()) for read in reads if read]
 
@@ -263,7 +278,7 @@ def getFastqs():
                   n.mean([len(zmwsByBarcode[k]) for k in zmwsByBarcode.keys()]))
     
     def getReadData(zmws):
-        recs = [getFastqRecords(zmw) for zmw,_ in zmws]
+        recs = [getFastqRecords(zmw,lZmw) for zmw,lZmw in zmws]
         recs = filter(lambda x : x, recs)
         return [elt for sublst in recs for elt in sublst]
 
