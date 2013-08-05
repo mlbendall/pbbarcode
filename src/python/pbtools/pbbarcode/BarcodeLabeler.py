@@ -53,13 +53,15 @@ class BarcodeScorer(object):
         self.basH5 = basH5
         self.barcodeFasta = list(barcodeFasta)
         self.aligner = Aligner.SWaligner()
-        self.barcodeLength = n.unique(map(lambda x : len(x.sequence), self.barcodeFasta))
+        self.barcodeLength = n.unique(map(lambda x : len(x.sequence), 
+                                          self.barcodeFasta))
         if len(self.barcodeLength) > 1:
             raise Exception("Currently, all barcodes must be the same length.")
         else:
             self.barcodeLength = int(self.barcodeLength)
 
-        self.barcodeSeqs = [(barcode.sequence.upper(), self._rc(barcode.sequence.upper())) 
+        self.barcodeSeqs = [(barcode.sequence.upper(), 
+                             self._rc(barcode.sequence.upper())) 
                             for barcode in self.barcodeFasta]
 
         self.adapterSidePad = adapterSidePad
@@ -76,10 +78,10 @@ class BarcodeScorer(object):
         self.forwardScorer = self.aligner.makeScorer([x[0] for x in self.barcodeSeqs])
         self.reverseScorer = self.aligner.makeScorer([x[1] for x in self.barcodeSeqs])
         
-        logging.debug(("Constructed BarcodeScorer with scoreMode: %s, adapterSidePad: %d" + 
-                       ", insertSidePad: %d, and scoreFirst: %r") % (scoreMode, adapterSidePad, 
-                                                                     insertSidePad, scoreFirst))
-        
+        logging.debug(("Constructed BarcodeScorer with scoreMode: %s," + \
+                           "adapterSidePad: %d, insertSidePad: %d, and scoreFirst: %r") \
+                          % (scoreMode, adapterSidePad, insertSidePad, scoreFirst))
+    
     @property
     def movieName(self):
         return self.basH5.movieName

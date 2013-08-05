@@ -174,8 +174,8 @@ def zipFofns(*inFofns):
     where n is the number of entries in each FOFN."""
     def readAndSort(inFile):
         lines = n.array(open(inFile).read().splitlines())
-        lines = lines[n.array(n.argsort([movieNameFromFile(fofnLine) for fofnLine in 
-                                         lines]))]
+        lines = lines[n.array(n.argsort([movieNameFromFile(fofnLine) for 
+                                         fofnLine in lines]))]
         return lines
 
     sortedFofns = [readAndSort(inFofn) for inFofn in inFofns]
@@ -184,7 +184,8 @@ def zipFofns(*inFofns):
         raise Exception("Fofns don't match, unequal number of inputs.")
     else:
         for i in xrange(0, n.unique(l)):
-            if len(n.unique([movieNameFromFile(sortedFofn[i]) for sortedFofn in sortedFofns])) != 1:
+            if len(n.unique([movieNameFromFile(sortedFofn[i]) for 
+                             sortedFofn in sortedFofns])) != 1:
                 raise Exception("Fofn elements don't match, movies differ.")
     
     # need to un-arrayify these guys
@@ -255,11 +256,13 @@ def getFastqRecords(zmw, lZmw = None):
             reads = [zmw.ccsRead]
     elif zmw.baxH5.hasRawBasecalls:
         if runner.args.subreads:
-            warnOnce("`subreads` argument is ignored when using >= 2.1 bas.h5 data as input.")
+            warnOnce("`subreads` argument is ignored when using >= 2.1" + 
+                     "bas.h5 data as input.")
         reads = zmw.subreads
     else:
         if runner.args.subreads:
-            warnOnce("`subreads` argument is ignored when using >= 2.1 ccs.h5 data as input.")
+            warnOnce("`subreads` argument is ignored when using >= 2.1" + 
+                     "ccs.h5 data as input.")
         reads = [zmw.ccsRead]
 
     extra = (" %g %g" % (round(zmw.zmwMetric("ReadScore"), 2), 
@@ -309,9 +312,9 @@ def emitFastqs():
         if outFiles[k]:
             with writer("%s/%s.fast%s" % (runner.args.outDir, k, l)) as w:
                 for e in outFiles[k]:
-                    r = record(e.name,
-                               e.sequence[runner.args.trim:(len(e.sequence)-runner.args.trim)],
-                               e.quality[runner.args.trim:(len(e.sequence)-runner.args.trim)])
+                    tlen = len(e.sequence)-runner.args.trim
+                    r = record(e.name, e.sequence[runner.args.trim:tlen],
+                               e.quality[runner.args.trim:tlen])
                     if r:
                         w.writeRecord(r)
 
@@ -356,7 +359,9 @@ def gconFunc(tp):
     bcdir = "/".join((rootDir, barcode))
 
     ## call gcon
-    cmd = "gcon.py r --min_cov 3 %s/subreads.fasta %s/best_0.fasta -d %s" % \
+    logging.info("In gconFunc for: %s" % barcode)
+
+    cmd = "gcon.py r --min_cov 3 %s/subreads.fasta %s/seed_read.fasta -d %s" % \
         (bcdir, bcdir, bcdir)
     subprocess.call(cmd, shell = True)
 
@@ -369,24 +374,33 @@ def gconFunc(tp):
     ## setup the blasr / sam / quiver stuff.
     logging.info("Setup regions file, now running blasr through quiver.")
 
-    cmd = 'blasr %s %s/g_consensus.fa -nproc 1 -sam -regionTable %s/region.fofn -out %s/aligned_reads.sam' % \
-        (runner.args.inputFofn, bcdir, bcdir, bcdir)
+    cmd = ('blasr %s %s/g_consensus.fa -nproc 1 -sam -regionTable %s/region.fofn -out ' + \
+               '%s/aligned_reads.sam') % (runner.args.inputFofn, bcdir, bcdir, bcdir)
     subprocess.call(cmd, shell = True)
-        
+    
+    logging.info("Done with blasr in: %s" % barcode)
+    
     cmd = 'samtoh5 %s/aligned_reads.sam %s/g_consensus.fa %s/aligned_reads.cmp.h5' % \
         (bcdir, bcdir, bcdir)
     subprocess.call(cmd, shell = True)
          
-    cmd = ('loadPulses %s %s/aligned_reads.cmp.h5 -byread -metrics QualityValue,InsertionQV' + \
-               ',MergeQV,DeletionQV,DeletionTag,SubstitutionTag,SubstitutionQV') % (runner.args.inputFofn, bcdir)
+    logging.info("Done with samtoh5 in: %s" % barcode)
+    
+    cmd = ('loadPulses %s %s/aligned_reads.cmp.h5 -byread -metrics ' + \
+               'QualityValue,InsertionQV,MergeQV,DeletionQV,DeletionTag,SubstitutionTag,' + \
+               'SubstitutionQV') % (runner.args.inputFofn, bcdir)
     subprocess.call(cmd, shell = True)
-
+    logging.info("Done with loadPulses in: %s" % barcode)
+    
     cmd = 'cmph5tools.py sort --inPlace %s/aligned_reads.cmp.h5' % bcdir
     subprocess.call(cmd, shell = True)
+    logging.info("Done with cmph5tools.py: %s" % barcode)
 
-    cmd = 'quiver %s/aligned_reads.cmp.h5 --outputFilename %s/q_consensus.fasta --referenceFilename %s/g_consensus.fa' % \
-        (bcdir, bcdir, bcdir)
+    cmd = ('quiver %s/aligned_reads.cmp.h5 --outputFilename %s/q_consensus.fasta ' + \
+               '--referenceFilename %s/g_consensus.fa') % (bcdir, bcdir, bcdir)
     subprocess.call(cmd, shell = True)
+    logging.info("Done with quiver: %s" % barcode)
+	
         
     ## append results to output file.
     bcCons = "%s/%s/q_consensus.fasta" % (rootDir, barcode)
@@ -395,74 +409,103 @@ def gconFunc(tp):
     else:
         return None
 
+def subsampleReads(e):
+    logging.info("starting with %d zmws" % len(e))
+    if runner.args.nZmws > 0:
+        k = runner.args.nZmws if runner.args.nZmws < len(e) else len(e)    
+    elif runner.args.subsample < 1:
+        k = int(len(e)*runner.args.subsample)
+    else:
+        k = len(e)
+    i = n.array(random.sample(range(0, len(e)), k), dtype = int)
+    logging.info("subsampled down to: %d" % len(i))
+    return [e[j] for j in i]
+
 def callConsensus():
-    def subsampleReads(e):
-        logging.info("starting with %d zmws" % len(e))
-        if runner.args.nZmws > 0:
-            k = runner.args.nZmws if runner.args.nZmws < len(e) else len(e)    
-        elif runner.args.subsample < 1:
-            k = int(len(e)*runner.args.subsample)
-        else:
-            k = len(e)
-        i = n.array(random.sample(range(0, len(e)), k), dtype = int) 
-        logging.info("subsampled down to: %d" % len(i))
-        return list(n.array(e)[i])
-
-    def getSeedRead(zmwsForBC):
-        """This tries to obtain a decent read from only subreads"""
-        srLens = n.array(map(len, reduce(lambda x,y : x+y, 
-                                         map(lambda x: len(x[0].subreads), zmwsForBCs))))
-        candidateRange = (n.percentile(srLens, 75), 
-                          n.percentile(srLens, 90))
-        
-        for zmwAndBc in zmwsForBcs:
-            zmw, lZmw = zmwAndBc
-            for subread in zmw.subreads:
-                if len(subread) > candidateRange[0] and len(subread) < candidateRange[1]:
-                    return [subread]
-        return None
-
     def makeReadAndReads(zmwsForBC):
-        ccsDta   = filter (lambda x : x, [zmw.ccsRead for zmw,_ in zmwsForBC])
-        subreads = []
+        ccsData = filter(lambda x:x, [zmw.ccsRead for _,_,zmw in zmwsForBC if zmw])
+        srData  = reduce(lambda x,y : x+y, [zmw.subreads for zmw,_,_ in
+                                            zmwsForBC if zmw], [])
+        if not srData and not ccsData:
+            return (None,None)
 
-        for zmw,_ in zmwsForBC:
-            if zmw.ccsRead:
-                subreads.append(zmw.ccsRead)
+        def getSeedRead(reads, lq = 80, uq = 90):
+            lens = map(len, reads)
+            candidateRange = (n.percentile(lens, 80), 
+                              n.percentile(lens, 90))
+            pfReads = [read for read,l in zip(reads, lens) if 
+                       l >= candidateRange[0] and l <= candidateRange[1]]
+            pfReads.sort(key = lambda x : -x.zmw.readScore)
+            return pfReads[0] if len(pfReads) else None
+
+        if ccsData:
+            # it is much safer to pick basically the longest CCS read
+            # than the subread.
+            seedRead = getSeedRead(ccsData, lq = 975, uq = 1)
+            if not seedRead:
+                seedRead = getSeedRead(srData)
+                logging.info("Unable to use a CCS read for seed read.")
             else:
-                for sr in zmw.subreads:
-                    subreads.append(sr)
-        if ccsDta:
-            m = n.argmax([n.mean(x.QualityValue()) * len(x) for x in ccsDta])
-            seedRead = [ccsDta[m]]
-        else:
-            seedRead = getSeedRead(zmwsForBC)
-        
-        return (seedRead, subreads)
-    
-    
-    # zmw
-    zmwsForBCs = getZmwsForBarcodes()
+                logging.info("Using CCS read for seed read.")
 
+            ccsZmws  = [x.holeNumber for x in ccsData]
+            allReads = ccsData
+            for sr in srData:
+                if sr.holeNumber not in ccsZmws:
+                    allReads.append(sr)
+        else:
+            logging.info("Using raw read for seed read")
+            seedRead = getSeedRead(srData)
+            allReads = srData
+        
+        return (seedRead, allReads)
+    
+
+    # check to make sure that you have the necessary dependencies,
+    # i.e., hgap script, blasr, etc.
+    try:
+        import pbtools.pbdagcon
+    except ImportError:
+        raise ImportError("Unable to find dependency `pbdagcon` - please install.")
+
+    # retrieve ZMWs by barcode
+    zmwsForBCs = getZmwsForBarcodes()
+    
     # subsample
     zmwsForBCs = {k:subsampleReads(v) for k,v in zmwsForBCs.items()}
 
     logging.info("unfiltered average zmws per barcode: %g" % 
                  n.round(n.mean(map(len, zmwsForBCs.values()))))
 
-    # remove ZMWs
+    # filter ZMWs
     zmwsForBCs = filterZmws(zmwsForBCs)
     
     logging.info("filtered average zmws per barcode: %g" % 
                  n.round(n.mean(map(len, zmwsForBCs.values()))))
 
-    # if CCS data is available, set that up.
+    # now choose the best subread to seed the assembly
+    if runner.args.ccsFofn:
+        # XXX: This part depends on the filenames of the ccs and input
+        # fofns, this is essentially a workaround to the fact the the
+        # part isn't part of the API
+        ccsReaders = {movieNameFromFile(l):BasH5Reader(l) for l in 
+                      open(runner.args.ccsFofn).read().splitlines()}
+        
+        # fill in the CCS spot.
+        for k,v in zmwsForBCs.items():
+            l = []
+            for zmw,lZmw in v:
+                r = ccsReaders[movieNameFromFile(zmw.baxH5.file.filename)]
+                l.append((zmw,lZmw,r[zmw.holeNumber]))
+            zmwsForBCs[k] = l
+    else:
+        # add none to the CCS spot.
+        zmwsForBCs = {k:[(zmw,lZmw,None) for zmw,lZmw in v] 
+                      for k,v in zmwsForBCs.iteritems()}
 
-
-    ## now choose the best subread to seed the assembly
     readAndReads = { k:makeReadAndReads(v) for k,v in zmwsForBCs.items() }
- 
 
+    # remove barcodes that don't have a seed read and a set of useable reads.
     readAndReads = { k:v for k,v in readAndReads.items() if v[0] and v[1] }
    
     ## generate FASTA files
@@ -474,9 +517,8 @@ def callConsensus():
             os.makedirs(bcdir)
 
         ## emit the seeds to separte files
-        for i, seed in enumerate(reads[0]):
-            with FastaWriter("%s/best_%d.fasta" % (bcdir, i)) as w:
-                w.writeRecord(FastaRecord(seed.readName, seed.basecalls()))
+        with FastaWriter("%s/seed_read.fasta" % bcdir) as w:
+            w.writeRecord(FastaRecord(reads[0].readName, reads[0].basecalls()))
         
         ## emit the subreads to a single file
         with FastaWriter("%s/subreads.fasta" % bcdir) as w:
@@ -497,7 +539,8 @@ def callConsensus():
                 reg = n.empty(shape = (0, regTbl.shape[1]), dtype = 'int32')
             fname = "%s/%s.rgn.h5" % (bcdir, os.path.basename(inFof))
             nfile = h5.File(fname, 'w')
-            ndset = nfile.create_dataset('/PulseData/Regions', data = reg, maxshape = (None, None))
+            ndset = nfile.create_dataset('/PulseData/Regions', data = reg, 
+                                         maxshape = (None, None))
             copyAttributes(regTbl, ndset)
             nfile.close()
             nfofn.append(fname)
@@ -508,8 +551,11 @@ def callConsensus():
     
     ## call gcon
     outDirs  = [ (outDir, k) for k in readAndReads.keys() ]
-    pool     = Pool(16)
-    outFasta = filter(lambda z : z, pool.map(gconFunc, outDirs))
+    if runner.args.nProcs == 1:
+	outFasta = filter(lambda z: z, map(gconFunc, outDirs))
+    else:
+    	pool = Pool(runner.args.nProcs)
+    	outFasta = filter(lambda z : z, pool.map(gconFunc, outDirs))
 
     ## write the results
     with FastaWriter('/'.join((outDir, "consensus.fa"))) as w:
@@ -532,8 +578,10 @@ class Pbbarcode(PBMultiToolRunner):
         desc = ['Creates a barcode.h5 file from base h5 files.']
         parser_m = subparsers.add_parser('labelZmws', description = "\n".join(desc), 
                                          help = 'Label zmws with barcode annotation',
-                                         formatter_class=argparse.ArgumentDefaultsHelpFormatter,)
-        parser_m.add_argument('--outDir', help = 'Where to write the newly created barcode.h5 files.',
+                                         formatter_class = \
+                                             argparse.ArgumentDefaultsHelpFormatter)
+        parser_m.add_argument('--outDir', 
+                              help = 'Where to write the newly created barcode.h5 files.',
                               default = os.getcwd())
         parser_m.add_argument('--outFofn', help = 'Write to outFofn',
                               default = 'barcode.fofn')
@@ -541,20 +589,25 @@ class Pbbarcode(PBMultiToolRunner):
                               default = 4, type = int)
         parser_m.add_argument('--insertSidePad', help = 'Pad with insertSidePad bases',
                               default = 4, type = int)
-        parser_m.add_argument('--scoreMode', help = 'The mode in which the barcodes should be scored.',
-                              choices = SCORE_MODES, default = 'symmetric', 
-                              type = str)
+        parser_m.add_argument('--scoreMode', 
+                              help = 'The mode in which the barcodes should be scored.',
+                              choices = SCORE_MODES, default = 'symmetric', type = str)
         parser_m.add_argument('--maxAdapters', type = int, default = 20, 
                               help = 'Only score the first maxAdapters')
         parser_m.add_argument('--scoreFirst', action = 'store_true', default = False,
                               help = 'Whether to try to score the leftmost barcode in a trace.')
-        parser_m.add_argument('--startTimeCutoff', help = 'Reads must start before this value in order to be included' + 
-                              ' when scoreFirst is set.', type = float, default = 10.0)
-        parser_m.add_argument('--nZmws', type = int, default = -1, help = 'Use the first n ZMWs for testing')
-        parser_m.add_argument('--nProcs', type = int, default = 8, help = 'How many processes to use')
+        parser_m.add_argument('--startTimeCutoff', 
+                              help = 'Reads must start before this value in order to be ' + \
+                                  'included when scoreFirst is set.', type = float, 
+                              default = 10.0)
+        parser_m.add_argument('--nZmws', type = int, default = -1, 
+                              help = 'Use the first n ZMWs for testing')
+        parser_m.add_argument('--nProcs', type = int, default = 8, 
+                              help = 'How many processes to use')
         parser_m.add_argument('--saveExtendedInfo', action = 'store_true', default = False,\
                                   help = 'Whether to save extended information to' + \
-                                  'the barcode.h5 files; this information is useful for debugging and chimera detection')
+                                  'the barcode.h5 files; this information is useful for ' + \
+                                  'debugging and chimera detection')
         parser_m.add_argument('barcodeFile', metavar = 'barcode.fasta', 
                               help = 'Input barcode fasta file')
         parser_m.add_argument('inputFile', metavar = 'input.fofn',
@@ -564,20 +617,25 @@ class Pbbarcode(PBMultiToolRunner):
             ## These are independent of the barcode scoring
             if not justBarcode: 
                 parser.add_argument('--minMaxInsertLength', default = 0, type = int, 
-                                    help = "ZMW Filter: exclude ZMW if the longest subread is less than this amount")
+                                    help = "ZMW Filter: exclude ZMW if the longest subread" + \
+                                        "is less than this amount")
                 parser.add_argument('--hqStartTime', default = float("inf"), type = float,
-                                    help = "ZMW Filter: exclude ZMW if start time of HQ region greater than this value (seconds)")
+                                    help = "ZMW Filter: exclude ZMW if start time of HQ region" + \
+                                        "greater than this value (seconds)")
                 parser.add_argument('--minReadScore', default = 0, type = float,
-                                    help = "ZMW Filter: exclude ZMW if readScore is less than this value")
+                                    help = "ZMW Filter: exclude ZMW if readScore is less than" + \
+                                        "this value")
      
             ## These obviously need the barcode score
             parser.add_argument('--minAvgBarcodeScore', default = 0.0, type = float,
-                                help = "ZMW Filter: exclude ZMW if average barcode score is less than this value")
+                                help = "ZMW Filter: exclude ZMW if average barcode score " + \
+                                    "is less than this value")
             parser.add_argument('--minNumBarcodes', default = 1, type = int,
-                                help = "ZMW Filter: exclude ZMW if number of barcodes observed is less than this value")
+                                help = "ZMW Filter: exclude ZMW if number of barcodes observed " + \
+                                "is less than this value")
             parser.add_argument('--minScoreRatio', default = 1.0, type = float,
-                                help = "ZMW Filter: exclude ZMWs whose best score divided by the 2nd best score is less" +
-                                " than this ratio")
+                                help = "ZMW Filter: exclude ZMWs whose best score divided by " + \
+                                    "the 2nd best score is less than this ratio")
 
             # Not yet implemented
             # parser.add_argument('--filterChimeras', default = False, action = 'store_true',
@@ -604,14 +662,16 @@ class Pbbarcode(PBMultiToolRunner):
                               help = 'output directory to write fastq files',
                               default = os.getcwd())
 
-        parser_s.add_argument('--subreads', help = ('whether to produce fastq files for the subreads;' +
-                                                    'the default is to use the CCS reads. This option only' + 
-                                                    'applies when input.fofn has both consensus and raw reads,' + 
-                                                    'otherwise the read type from input.fofn will be returned.'),
+        parser_s.add_argument('--subreads', 
+                              help = 'whether to produce fastq files for the subreads;' + \
+                                  'the default is to use the CCS reads. This option only' + \
+                                  'applies when input.fofn has both consensus and raw reads,' + \
+                                  'otherwise the read type from input.fofn will be returned.',
                               action = 'store_true',
                               default = False)
-        parser_s.add_argument('--unlabeledZmws', help = ('whether to emit a fastq file for the unlabeled ZMWs.' +
-                                                         'These are the ZMWs where no adapters are found typically'),
+        parser_s.add_argument('--unlabeledZmws', 
+                              help = 'whether to emit a fastq file for the unlabeled ZMWs.' + \
+                              ' These are the ZMWs where no adapters are found typically',
                               action = 'store_true',
                               default = False)
 
@@ -627,9 +687,10 @@ class Pbbarcode(PBMultiToolRunner):
         parser_s.add_argument('barcodeFofn', metavar = 'barcode.fofn',
                               help = 'input barcode.h5 fofn file')
 
-        desc = ['Compute consensus sequences for each barcode']
+        desc = ['Compute consensus sequences for each barcode.']
         parser_s = subparsers.add_parser('consensus', description = "\n".join(desc),
-                                         help = "Compute consensus",
+                                         help = "Compute a consensus sequence for each barcode." + \
+                                             "This command relies on the presence of pbdagcon",
                                          formatter_class=argparse.ArgumentDefaultsHelpFormatter)
         parser_s.add_argument('--subsample', default = 1, type = float,
                               help = "Subsample ZMWs")
@@ -640,6 +701,8 @@ class Pbbarcode(PBMultiToolRunner):
         parser_s.add_argument('--keepTmpDir', action = 'store_true', default = False)
         parser_s.add_argument('--ccsFofn', default = '', type = str,
                               help = 'Obtain CCS data from ccsFofn instead of input.fofn')
+        parser_s.add_argument('--nProcs', default = 16, type = int,
+                              help = 'Use nProcs to execute.')
         addFilteringOpts(parser_s)
         parser_s.add_argument('inputFofn', metavar = 'input.fofn',
                               help = 'input bas.h5 fofn file')

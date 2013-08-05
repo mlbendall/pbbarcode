@@ -19,7 +19,7 @@ develop:
 
 test:
 	find tests -name "*.py" | xargs nosetests
-	find tests/cram -name "*.t" | xargs cram --verbose 
+	find tests/cram -name "*.t" | grep -v consensus.t | xargs cram --verbose 
 
 clean: doc-clean
 	rm -rf build/;\
