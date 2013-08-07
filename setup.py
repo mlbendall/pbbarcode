@@ -2,12 +2,22 @@ from setuptools import setup, Extension, find_packages
 import os
 import sys
 
-#if os.system("make -C src/C all"):
-#    sys.exit(1)
+vFile = 'src/python/pbtools/pbbarcode/_version.py'
+
+if os.path.exists(vFile):
+    lines = open(vFile, 'r').read().splitlines()
+    for line in lines:
+        elts = line.split('=')
+        elts = [e.strip() for e in elts]
+        if len(elts) == 2 and elts[0] == '__version__':
+            _ReadVersion = elts[1].replace('\'', '').replace('\"', '')
+            break
+else:
+    _ReadVersion = '0.0.0'
     
 setup(
     name = 'pbtools.barcode',
-    version='0.1.0',
+    version=_ReadVersion,
     author='pbiDevNet',
     author_email='pbiDevNet@pacificbiosciences.com',
     license='LICENSE.txt',

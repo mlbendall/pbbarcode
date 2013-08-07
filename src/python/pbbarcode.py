@@ -45,16 +45,16 @@ import h5py as h5
 import numpy as n
 
 from pbcore.util.ToolRunner import PBMultiToolRunner
-from pbcore.io.BasH5Reader import *
+from pbcore.io.BasH5Reader import BaxH5Reader, BasH5Reader
 from pbcore.io.CmpH5Reader import *
 from pbcore.io.BarcodeH5Reader import *
 from pbcore.io import FastaReader, FastqWriter, FastqRecord, \
     FastaWriter, FastaRecord
 
 from pbtools.pbbarcode.BarcodeLabeler import *
-from pbtools.pbh5tools.CmpH5Utils import copyAttributes
+from pbtools.pbbarcode._version import __version__
 
-__version__ = ".4"
+from pbtools.pbh5tools.CmpH5Utils import copyAttributes
 
 # Paths to the Barcode Datasets in the cmp.h5 file.
 BC_ALN_INFO_DS = "AlnInfo/Barcode"
@@ -334,16 +334,19 @@ def getUnlabeledZmws():
     return reduce(lambda x,y : x+y, [getFastqRecords(unlabeledZmw) for 
                                      unlabeledZmw in unlabeledZmws])
 
-def getZmwsForBarcodes():
+def getZmwsForBarcodes(labels = None):
     """dictionary of pbcore.io.Zmw and LabeledZmw indexed by barcode
     label"""
     zmwsForBCs = {} 
-
     for basFile, barcodeFile in zipFofns(runner.args.inputFofn, 
                                          runner.args.barcodeFofn):
-        basH5 = BasH5Reader(basFile)
-        bcH5  = BarcodeH5Reader(barcodeFile)
-        for label in bcH5.barcodeLabels:
+        basH5   = BasH5Reader(basFile)
+        bcH5    = BarcodeH5Reader(barcodeFile)
+        allLabs = bcH5.barcodeLabels
+        if labels:
+            allLabs = [x for x in allLabs if x in labels]
+            logging.info("Processing only: %s" % ",".join(allLabs))
+        for label in allLabs:
             lZmws = bcH5.labeledZmwsFromBarcodeLabel(label)
             for lZmw in lZmws:
                 zmw = basH5[lZmw.holeNumber]
@@ -370,47 +373,50 @@ def gconFunc(tp):
     
     if not list(r)[0].sequence:
         return None
-    
-    ## setup the blasr / sam / quiver stuff.
-    logging.info("Setup regions file, now running blasr through quiver.")
 
-    cmd = ('blasr %s %s/g_consensus.fa -nproc 1 -sam -regionTable %s/region.fofn -out ' + \
-               '%s/aligned_reads.sam') % (runner.args.inputFofn, bcdir, bcdir, bcdir)
-    subprocess.call(cmd, shell = True)
-    
-    logging.info("Done with blasr in: %s" % barcode)
-    
-    cmd = 'samtoh5 %s/aligned_reads.sam %s/g_consensus.fa %s/aligned_reads.cmp.h5' % \
-        (bcdir, bcdir, bcdir)
-    subprocess.call(cmd, shell = True)
-         
-    logging.info("Done with samtoh5 in: %s" % barcode)
-    
-    cmd = ('loadPulses %s %s/aligned_reads.cmp.h5 -byread -metrics ' + \
-               'QualityValue,InsertionQV,MergeQV,DeletionQV,DeletionTag,SubstitutionTag,' + \
-               'SubstitutionQV') % (runner.args.inputFofn, bcdir)
-    subprocess.call(cmd, shell = True)
-    logging.info("Done with loadPulses in: %s" % barcode)
-    
-    cmd = 'cmph5tools.py sort --inPlace %s/aligned_reads.cmp.h5' % bcdir
-    subprocess.call(cmd, shell = True)
-    logging.info("Done with cmph5tools.py: %s" % barcode)
+    ## check to see if we are going to run quiver
+    if not runner.args.noQuiver:
+        # setup the blasr / sam / quiver stuff.
+        logging.info("Setup regions file, now running blasr through quiver.")
 
-    cmd = ('quiver %s/aligned_reads.cmp.h5 --outputFilename %s/q_consensus.fasta ' + \
-               '--referenceFilename %s/g_consensus.fa') % (bcdir, bcdir, bcdir)
-    subprocess.call(cmd, shell = True)
-    logging.info("Done with quiver: %s" % barcode)
-	
+        cmd = ('blasr %s %s/g_consensus.fa -nproc 1 -sam -regionTable %s/region.fofn -out ' + \
+                   '%s/aligned_reads.sam') % (runner.args.inputFofn, bcdir, bcdir, bcdir)
+        logging.debug(cmd)
+        subprocess.call(cmd, shell = True)
+            
+        cmd = 'samtoh5 %s/aligned_reads.sam %s/g_consensus.fa %s/aligned_reads.cmp.h5' % \
+            (bcdir, bcdir, bcdir)
+        logging.debug(cmd)
+        subprocess.call(cmd, shell = True)
+    
+        cmd = ('loadPulses %s %s/aligned_reads.cmp.h5 -byread -metrics ' + \
+                   'QualityValue,InsertionQV,MergeQV,DeletionQV,DeletionTag,SubstitutionTag,' + \
+                   'SubstitutionQV') % (runner.args.inputFofn, bcdir)
+        logging.debug(cmd)
+        subprocess.call(cmd, shell = True)
+    
+        cmd = 'cmph5tools.py sort --inPlace %s/aligned_reads.cmp.h5' % bcdir
+        logging.debug(cmd)
+        subprocess.call(cmd, shell = True)
+
+        cmd = ('quiver -vv --algorithm quiver -p P4-C2.AllQVsMergingByChannelModel ' \
+                   '%s/aligned_reads.cmp.h5 --outputFilename %s/q_consensus.fasta ' + \
+                   '--referenceFilename %s/g_consensus.fa') % (bcdir, bcdir, bcdir)
+        logging.debug(cmd)
+        subprocess.call(cmd, shell = True)
+        cFilename = 'q_consensus.fasta'
+    else:
+        cFilename = 'g_consensus.fa'
         
     ## append results to output file.
-    bcCons = "%s/%s/q_consensus.fasta" % (rootDir, barcode)
+    bcCons = "%s/%s/%s" % (rootDir, barcode, cFilename)
     if os.path.exists(bcCons):
         return FastaRecord(barcode, list(FastaReader(bcCons))[0].sequence)
     else:
         return None
 
 def subsampleReads(e):
-    logging.info("starting with %d zmws" % len(e))
+    logging.debug("starting with %d zmws" % len(e))
     if runner.args.nZmws > 0:
         k = runner.args.nZmws if runner.args.nZmws < len(e) else len(e)    
     elif runner.args.subsample < 1:
@@ -418,7 +424,7 @@ def subsampleReads(e):
     else:
         k = len(e)
     i = n.array(random.sample(range(0, len(e)), k), dtype = int)
-    logging.info("subsampled down to: %d" % len(i))
+    logging.debug("subsampled down to: %d" % len(i))
     return [e[j] for j in i]
 
 def callConsensus():
@@ -447,18 +453,11 @@ def callConsensus():
                 logging.info("Unable to use a CCS read for seed read.")
             else:
                 logging.info("Using CCS read for seed read.")
-
-            ccsZmws  = [x.holeNumber for x in ccsData]
-            allReads = ccsData
-            for sr in srData:
-                if sr.holeNumber not in ccsZmws:
-                    allReads.append(sr)
         else:
             logging.info("Using raw read for seed read")
             seedRead = getSeedRead(srData)
-            allReads = srData
         
-        return (seedRead, allReads)
+        return (seedRead, srData)
     
 
     # check to make sure that you have the necessary dependencies,
@@ -469,7 +468,10 @@ def callConsensus():
         raise ImportError("Unable to find dependency `pbdagcon` - please install.")
 
     # retrieve ZMWs by barcode
-    zmwsForBCs = getZmwsForBarcodes()
+    if runner.args.barcode:
+        zmwsForBCs = getZmwsForBarcodes(runner.args.barcode)
+    else:
+        zmwsForBCs = getZmwsForBarcodes()
     
     # subsample
     zmwsForBCs = {k:subsampleReads(v) for k,v in zmwsForBCs.items()}
@@ -508,7 +510,7 @@ def callConsensus():
     # remove barcodes that don't have a seed read and a set of useable reads.
     readAndReads = { k:v for k,v in readAndReads.items() if v[0] and v[1] }
    
-    ## generate FASTA files
+    # generate FASTA files
     outDir = runner.args.outDir
 
     for barcode, reads in readAndReads.items():
@@ -516,32 +518,36 @@ def callConsensus():
         if not os.path.exists(bcdir):
             os.makedirs(bcdir)
 
-        ## emit the seeds to separte files
+        # emit the seeds to separte files
         with FastaWriter("%s/seed_read.fasta" % bcdir) as w:
             w.writeRecord(FastaRecord(reads[0].readName, reads[0].basecalls()))
+
+        subreads = reads[1]
         
-        ## emit the subreads to a single file
+        # emit the subreads to a single file
         with FastaWriter("%s/subreads.fasta" % bcdir) as w:
-            for r in reads[1]:
+            for r in subreads:
                 w.writeRecord(FastaRecord(r.readName, r.basecalls()))
-                
-                subreads = reads[1]
-        
-        ## now, make region files for an eventual blasr alignment
-        regs = [(a, h5.File(a, 'r')['/PulseData/Regions']) for a in 
-                open(runner.args.inputFofn, 'r').read().splitlines()]
+
+        # construct the region file by subsetting the ZMWs that you
+        # are interested in.
         nfofn = []
-        for inFof,regTbl in regs:
-            holes = n.in1d(regTbl[:, 0], n.array([ a.holeNumber for a in subreads ]))
+        for inFof, in zipFofns(runner.args.inputFofn):
+            bh5 = BaxH5Reader(inFof)
+            reg = bh5.file['/PulseData/Regions']
+            inMovie = filter(lambda z : z.baxH5.movieName == bh5.movieName, 
+                             subreads)
+            holes = n.in1d(reg[:,0], n.array([a.holeNumber for a in inMovie]))
             if any(holes): 
-                reg = regTbl[holes, :]
+                nreg = reg[holes,:]
             else:
-                reg = n.empty(shape = (0, regTbl.shape[1]), dtype = 'int32')
-            fname = "%s/%s.rgn.h5" % (bcdir, os.path.basename(inFof))
+                nreg = n.empty(shape = (0, reg.shape[1]), dtype = 'int32')
+
+            fname = "%s/%s.rgn.h5" % (bcdir, movieNameFromFile(inFof))
             nfile = h5.File(fname, 'w')
-            ndset = nfile.create_dataset('/PulseData/Regions', data = reg, 
+            ndset = nfile.create_dataset('/PulseData/Regions', data = nreg, 
                                          maxshape = (None, None))
-            copyAttributes(regTbl, ndset)
+            copyAttributes(reg, ndset)
             nfile.close()
             nfofn.append(fname)
         
@@ -703,14 +709,20 @@ class Pbbarcode(PBMultiToolRunner):
                               help = 'Obtain CCS data from ccsFofn instead of input.fofn')
         parser_s.add_argument('--nProcs', default = 16, type = int,
                               help = 'Use nProcs to execute.')
+        parser_s.add_argument('--noQuiver', action = 'store_true',
+                              default = False)
         addFilteringOpts(parser_s)
+        
         parser_s.add_argument('inputFofn', metavar = 'input.fofn',
                               help = 'input bas.h5 fofn file')
         parser_s.add_argument('barcodeFofn', metavar = 'barcode.fofn',
                               help = 'input bc.h5 fofn file')
 
+        parser_s.add_argument('--barcode', default = None, type = str, nargs = "+",
+                              help = "Use this to extract consensus for just one barcode.")
+
     def getVersion(self):
-        return __version__
+        return  __version__
 
     def run(self):
         logging.debug("Arguments" + str(self.args))
