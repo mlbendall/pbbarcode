@@ -437,8 +437,8 @@ def callConsensus():
 
         def getSeedRead(reads, lq = 80, uq = 90):
             lens = map(len, reads)
-            candidateRange = (n.percentile(lens, 80), 
-                              n.percentile(lens, 90))
+            candidateRange = (n.percentile(lens, lq), 
+                              n.percentile(lens, uq))
             pfReads = [read for read,l in zip(reads, lens) if 
                        l >= candidateRange[0] and l <= candidateRange[1]]
             pfReads.sort(key = lambda x : -x.zmw.readScore)
@@ -447,7 +447,7 @@ def callConsensus():
         if ccsData:
             # it is much safer to pick basically the longest CCS read
             # than the subread.
-            seedRead = getSeedRead(ccsData, lq = 975, uq = 1)
+            seedRead = getSeedRead(ccsData, lq = 95, uq = 1)
             if not seedRead:
                 seedRead = getSeedRead(srData)
                 logging.info("Unable to use a CCS read for seed read.")
@@ -459,7 +459,6 @@ def callConsensus():
         
         return (seedRead, srData)
     
-
     # check to make sure that you have the necessary dependencies,
     # i.e., hgap script, blasr, etc.
     try:
