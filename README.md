@@ -1,5 +1,6 @@
 Overview of the pbbarcode package
 =================================
 
-Annotated reads
+Annotate reads with barcode labels.
+
 
