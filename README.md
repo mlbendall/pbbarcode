@@ -1,6 +1,5 @@
 Overview of the pbbarcode package
 =================================
 
-Annotate reads with barcode labels.
-
+The `pbbarcode` package provides tools for annotating PacBio sequencing reads with barcode information. 
 
