@@ -435,26 +435,28 @@ def callConsensus():
         if not srData and not ccsData:
             return (None,None)
 
-        def getSeedRead(reads, lq = 80, uq = 90):
+        def getSeedRead(reads, lq = 80, uq = 90, 
+                        sLambda = lambda x : -x.zmw.readScore):
             lens = map(len, reads)
             candidateRange = (n.percentile(lens, lq), 
                               n.percentile(lens, uq))
             pfReads = [read for read,l in zip(reads, lens) if 
                        l >= candidateRange[0] and l <= candidateRange[1]]
-            pfReads.sort(key = lambda x : -x.zmw.readScore)
+            pfReads.sort(key = sLambda)
             return pfReads[0] if len(pfReads) else None
 
         if ccsData:
-            # it is much safer to pick basically the longest CCS read
-            # than the subread.
-            seedRead = getSeedRead(ccsData, lq = 95, uq = 1)
+            ## all CCS reads should be the *same* length for an
+            ## amplicon. Let's take the middle ones
+            seedRead = getSeedRead(ccsData, lq = 30, uq = 70,
+                                   sLambda = lambda x: -x.zmw.numPasses)
             if not seedRead:
                 seedRead = getSeedRead(srData)
-                logging.info("Unable to use a CCS read for seed read.")
+                logging.info("Unable to use a CCS read for the seed read.")
             else:
-                logging.info("Using CCS read for seed read.")
+                logging.info("Using a CCS read for the seed read.")
         else:
-            logging.info("Using raw read for seed read")
+            logging.info("Using a raw read for the seed read")
             seedRead = getSeedRead(srData)
         
         return (seedRead, srData)
