@@ -28,7 +28,7 @@
 #################################################################################$$
 import logging
 
-from pbcore.io.BasH5Reader import *
+from pbcore.io import BasH5Reader, BaxH5Reader
 from pbcore.io.FastaIO import *
 import pbtools.pbbarcode.SWaligner as Aligner
 import numpy as n

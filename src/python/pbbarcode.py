@@ -45,8 +45,8 @@ import h5py as h5
 import numpy as n
 
 from pbcore.util.ToolRunner import PBMultiToolRunner
-from pbcore.io.BasH5Reader import BaxH5Reader, BasH5Reader
-from pbcore.io.CmpH5Reader import *
+from pbcore.io import BaxH5Reader, BasH5Reader
+from pbcore.io import CmpH5Reader, CmpH5Alignment
 from pbcore.io.BarcodeH5Reader import *
 from pbcore.io import FastaReader, FastqWriter, FastqRecord, \
     FastaWriter, FastaRecord
