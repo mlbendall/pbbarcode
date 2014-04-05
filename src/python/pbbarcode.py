@@ -125,7 +125,7 @@ def labelAlignments():
     bcFofn = BarcodeH5Fofn(runner.args.inputFofn)
     
     with CmpH5Reader(runner.args.cmpH5) as cmpH5:
-        bcDS = n.zeros((len(cmpH5), 5), dtype = "int32")
+        bcDS = n.zeros((len(cmpH5), 6), dtype = "int32")
 
         for (i, aln) in enumerate(cmpH5):
             bcReader = bcFofn.readerForMovie(aln.movieInfo.Name)
@@ -139,12 +139,12 @@ def labelAlignments():
                 lZmw = None
             
             if lZmw:
-                bcDS[i,:] = n.array([lZmw.nScored, lZmw.bestIdx, lZmw.bestScore,
+                bcDS[i,:] = n.array([lZmw.bestIdx, lZmw.nScored, lZmw.bestIdx, lZmw.bestScore,
                                      lZmw.secondBestIdx, lZmw.secondBestScore])
             else:
                 # either no barcode was found for this guy or they got
                 # filtered, hence the NULL_BARCODE
-                bcDS[i,:] = n.array([0, 
+                bcDS[i,:] = n.array([len(bcReader.barcodeLabels), 0, 
                                      len(bcReader.barcodeLabels), 0, 
                                      len(bcReader.barcodeLabels), 0])
 
