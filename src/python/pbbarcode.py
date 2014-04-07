@@ -164,8 +164,8 @@ def labelAlignments():
     if BC_ALN_INFO_DS in H5:
         del H5[BC_ALN_INFO_DS]
     bcDS = H5.create_dataset(BC_ALN_INFO_DS, data = bcDS, dtype = 'int32')
-    bcDS.attrs['ColumnNames'] = n.array(['count', 'index1', 'score1', 'index2', 
-                                         'score2'])
+    bcDS.attrs['ColumnNames'] = n.array(['index','count', 'bestIndex', 'bestScore', 'secondBestIndex', 
+                                         'secondBestScore'])
     bcDS.attrs['BarcodeMode'] = bcFofn.scoreMode
     H5.close()
 
